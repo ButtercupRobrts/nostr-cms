@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useTheme } from '@/hooks/useTheme';
 import { LoginArea } from '@/components/auth/LoginArea';
+import { useAppContext } from '@/hooks/useAppContext';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -15,22 +17,31 @@ import {
   Menu,
   X,
   Sun,
-  Moon
+  Moon,
+  Shield
 } from 'lucide-react';
-
-const navigation = [
-  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
-  { name: 'Blog Posts', href: '/admin/blog', icon: FileText },
-  { name: 'Events', href: '/admin/events', icon: Calendar },
-  { name: 'Pages', href: '/admin/pages', icon: FileCode },
-  { name: 'Site Settings', href: '/admin/settings', icon: Settings },
-  { name: 'View Site', href: '/', icon: Home },
-];
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { config } = useAppContext();
+  const { user } = useCurrentUser();
+
+  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
+  const isPrimaryAdmin = user && config.siteConfig?.adminRoles?.[user.pubkey.toLowerCase().trim()] === 'primary';
+  const hasSystemAccess = isMasterUser || isPrimaryAdmin;
+
+  const navigation = [
+    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Blog Posts', href: '/admin/blog', icon: FileText },
+    { name: 'Events', href: '/admin/events', icon: Calendar },
+    { name: 'Pages', href: '/admin/pages', icon: FileCode },
+    { name: 'Site Settings', href: '/admin/settings', icon: Settings },
+    ...(hasSystemAccess ? [{ name: 'Admin Settings', href: '/admin/system-settings', icon: Shield }] : []),
+    { name: 'View Site', href: '/', icon: Home },
+  ];
 
   return (
     <div className="min-h-screen bg-background">

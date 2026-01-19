@@ -1,0 +1,442 @@
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useAppContext } from '@/hooks/useAppContext';
+import { useNostrPublish } from '@/hooks/useNostrPublish';
+import { useQueryClient } from '@tanstack/react-query';
+import { useNostr } from '@nostrify/react';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { Save, Plus, Trash2, RefreshCw, User, Shield, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuthor } from '@/hooks/useAuthor';
+
+interface SiteConfig {
+  title: string;
+  logo: string;
+  favicon: string;
+  ogImage: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroBackground: string;
+  showEvents: boolean;
+  showBlog: boolean;
+  maxEvents: number;
+  maxBlogPosts: number;
+  defaultRelay: string;
+  publishRelays: string[];
+  adminRoles: Record<string, 'primary' | 'secondary'>;
+}
+
+function UserRoleManager({ 
+  pubkey, 
+  name, 
+  role, 
+  isMasterOfSession,
+  isThisUserMaster,
+  onRoleChange 
+}: { 
+  pubkey: string; 
+  name: string; 
+  role?: 'primary' | 'secondary';
+  isMasterOfSession: boolean;
+  isThisUserMaster: boolean;
+  onRoleChange: (role: 'primary' | 'secondary') => void;
+}) {
+  const { data: authorData } = useAuthor(pubkey);
+  const metadata = authorData?.metadata;
+
+  return (
+    <div className="flex items-center justify-between p-3 border rounded-lg bg-card">
+      <div className="flex items-center gap-3">
+        <Avatar>
+          <AvatarImage src={metadata?.picture} alt={name} />
+          <AvatarFallback><User className="h-4 w-4" /></AvatarFallback>
+        </Avatar>
+        <div>
+          <div className="font-medium flex items-center gap-2">
+            {name}
+            {isThisUserMaster && <Badge variant="default" className="bg-purple-600 hover:bg-purple-700">Master User</Badge>}
+            {!isThisUserMaster && role === 'primary' && <Badge variant="default" className="bg-green-600 hover:bg-green-700">Primary Admin</Badge>}
+            {!isThisUserMaster && role === 'secondary' && <Badge variant="secondary">Secondary Admin</Badge>}
+            {!isThisUserMaster && !role && <Badge variant="outline" className="text-muted-foreground">Unassigned</Badge>}
+          </div>
+          <div className="text-xs text-muted-foreground font-mono">{pubkey.slice(0, 8)}...{pubkey.slice(-8)}</div>
+        </div>
+      </div>
+      
+      {isThisUserMaster ? (
+        <div className="flex items-center gap-2 text-sm font-medium text-purple-600 px-3">
+          <Shield className="h-4 w-4" />
+          Primary Access (Owner)
+        </div>
+      ) : isMasterOfSession && (
+        <Select 
+          value={role || 'secondary'} 
+          onValueChange={(val) => onRoleChange(val as 'primary' | 'secondary')}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select role" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="primary">Primary Admin</SelectItem>
+            <SelectItem value="secondary">Secondary Admin</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  );
+}
+
+export default function AdminSystemSettings() {
+  const { config, updateConfig } = useAppContext();
+  const { mutate: publishEvent } = useNostrPublish();
+  const queryClient = useQueryClient();
+  const { nostr } = useNostr();
+  const { user } = useCurrentUser();
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
+  const isPrimaryAdmin = user && config.siteConfig?.adminRoles?.[user.pubkey.toLowerCase().trim()] === 'primary';
+  const hasAccess = isMasterUser || isPrimaryAdmin;
+
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>(() => ({
+    title: config.siteConfig?.title ?? 'My Meetup Site',
+    logo: config.siteConfig?.logo ?? '',
+    favicon: config.siteConfig?.favicon ?? '',
+    ogImage: config.siteConfig?.ogImage ?? '',
+    heroTitle: config.siteConfig?.heroTitle ?? 'Welcome to Our Community',
+    heroSubtitle: config.siteConfig?.heroSubtitle ?? 'Join us for amazing meetups and events',
+    heroBackground: config.siteConfig?.heroBackground ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop',
+    showEvents: config.siteConfig?.showEvents ?? true,
+    showBlog: config.siteConfig?.showBlog ?? true,
+    maxEvents: config.siteConfig?.maxEvents ?? 6,
+    maxBlogPosts: config.siteConfig?.maxBlogPosts ?? 3,
+    defaultRelay: config.siteConfig?.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY ?? '',
+    publishRelays: config.siteConfig?.publishRelays ?? Array.from(
+      (import.meta.env.VITE_PUBLISH_RELAYS || '').split(',').filter(Boolean)
+    ),
+    adminRoles: config.siteConfig?.adminRoles ?? {},
+  }));
+
+  const { data: remoteNostrJson } = useRemoteNostrJson();
+
+  useEffect(() => {
+    if (!hasAccess || isSaving || isRefreshing) return;
+
+    if (config.siteConfig) {
+      setSiteConfig(prev => ({
+        ...prev,
+        ...config.siteConfig,
+        publishRelays: config.siteConfig?.publishRelays ?? prev.publishRelays,
+        adminRoles: config.siteConfig?.adminRoles ?? prev.adminRoles,
+      }) as SiteConfig);
+    }
+  }, [config.siteConfig, isSaving, isRefreshing, hasAccess]);
+
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <ShieldAlert className="h-12 w-12 text-destructive" />
+        <h2 className="text-xl font-bold">Access Denied</h2>
+        <p className="text-muted-foreground">
+          Only Primary Admins and the Master User can access these settings.
+        </p>
+      </div>
+    );
+  }
+
+  const handleLoadConfig = async () => {
+    if (!user) return;
+    setIsRefreshing(true);
+
+    try {
+      const signal = AbortSignal.timeout(5000);
+      const events = await nostr.query([
+        {
+          kinds: [30078],
+          authors: [user.pubkey],
+          '#d': ['nostr-meetup-site-config'],
+          limit: 1
+        }
+      ], { signal });
+
+      if (events.length > 0) {
+        const event = events[0];
+        const loadedConfig: Partial<SiteConfig> = {};
+        
+        const tags = {
+          title: 'title',
+          logo: 'logo',
+          favicon: 'favicon',
+          ogImage: 'og_image',
+          heroTitle: 'hero_title',
+          heroSubtitle: 'hero_subtitle',
+          heroBackground: 'hero_background',
+          defaultRelay: 'default_relay'
+        };
+
+        const eventTags = event.tags || [];
+
+        Object.entries(tags).forEach(([key, tagName]) => {
+          const val = eventTags.find(([name]) => name === tagName)?.[1];
+          if (val !== undefined) {
+            (loadedConfig as Record<string, string | boolean | number | string[] | undefined>)[key] = val;
+          }
+        });
+
+        const showEvents = eventTags.find(([name]) => name === 'show_events')?.[1];
+        if (showEvents !== undefined) loadedConfig.showEvents = showEvents === 'true';
+        
+        const showBlog = eventTags.find(([name]) => name === 'show_blog')?.[1];
+        if (showBlog !== undefined) loadedConfig.showBlog = showBlog === 'true';
+        
+        const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
+        if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
+        
+        const maxBlogPosts = eventTags.find(([name]) => name === 'max_blog_posts')?.[1];
+        if (maxBlogPosts !== undefined) loadedConfig.maxBlogPosts = parseInt(maxBlogPosts);
+
+        const relaysTag = eventTags.find(([name]) => name === 'publish_relays')?.[1];
+        if (relaysTag) {
+          try {
+            const parsed = JSON.parse(relaysTag);
+            if (Array.isArray(parsed)) loadedConfig.publishRelays = parsed;
+          } catch (e) {
+            console.error('Failed to parse publish_relays tag', e);
+          }
+        }
+
+        const adminRolesTag = eventTags.find(([name]) => name === 'admin_roles')?.[1];
+        if (adminRolesTag) {
+          try {
+            const parsed = JSON.parse(adminRolesTag);
+            if (parsed && typeof parsed === 'object') loadedConfig.adminRoles = parsed;
+          } catch (e) {
+            console.error('Failed to parse admin_roles tag', e);
+          }
+        }
+
+        setSiteConfig(prev => ({
+          ...prev,
+          ...loadedConfig
+        }) as SiteConfig);
+        
+        updateConfig((currentConfig) => ({
+          ...currentConfig,
+          siteConfig: {
+            ...(currentConfig.siteConfig || {}),
+            ...loadedConfig,
+          },
+        }));
+
+        queryClient.clear();
+      }
+    } catch (error) {
+      console.error('Failed to load existing config:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setIsSaving(true);
+    try {
+      const configTags = [
+        ['d', 'nostr-meetup-site-config'],
+        ['title', siteConfig.title],
+        ['logo', siteConfig.logo],
+        ['favicon', siteConfig.favicon],
+        ['og_image', siteConfig.ogImage],
+        ['hero_title', siteConfig.heroTitle],
+        ['hero_subtitle', siteConfig.heroSubtitle],
+        ['hero_background', siteConfig.heroBackground],
+        ['show_events', siteConfig.showEvents.toString()],
+        ['show_blog', siteConfig.showBlog.toString()],
+        ['max_events', siteConfig.maxEvents.toString()],
+        ['max_blog_posts', siteConfig.maxBlogPosts.toString()],
+        ['default_relay', siteConfig.defaultRelay],
+        ['publish_relays', JSON.stringify(siteConfig.publishRelays)],
+        ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
+      ];
+
+      publishEvent({
+        event: {
+          kind: 30078,
+          content: JSON.stringify({ navigation: config.navigation }),
+          tags: configTags,
+        }
+      });
+
+      updateConfig((currentConfig) => ({
+        ...currentConfig,
+        siteConfig: {
+          ...(currentConfig.siteConfig || {}),
+          ...siteConfig,
+        },
+      }));
+
+      queryClient.clear();
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Admin Settings</h2>
+          <p className="text-muted-foreground">
+            Manage admin roles and relay configuration.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleLoadConfig} disabled={isRefreshing || !user}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh from Relay'}
+          </Button>
+          <Button onClick={handleSaveConfig} disabled={isSaving}>
+            <Save className="h-4 w-4 mr-2" />
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Relay Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Relay Configuration</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="defaultRelay">Default Relay (for content)</Label>
+            <Input
+              id="defaultRelay"
+              value={siteConfig.defaultRelay}
+              onChange={(e) => setSiteConfig(prev => ({ ...prev, defaultRelay: e.target.value }))}
+              placeholder={import.meta.env.VITE_DEFAULT_RELAY}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              This relay will be used to read all content for the public site.
+            </p>
+          </div>
+          
+          <div>
+            <Label htmlFor="publishRelays">Publishing Relays</Label>
+            <div className="space-y-2">
+              {siteConfig.publishRelays.map((relay, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    value={relay}
+                    onChange={(e) => {
+                      const newRelays = [...siteConfig.publishRelays];
+                      newRelays[index] = e.target.value;
+                      setSiteConfig(prev => ({ ...prev, publishRelays: newRelays }));
+                    }}
+                    placeholder="wss://relay.example.com"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newRelays = siteConfig.publishRelays.filter((_, i) => i !== index);
+                      setSiteConfig(prev => ({ ...prev, publishRelays: newRelays }));
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSiteConfig(prev => ({ 
+                    ...prev, 
+                    publishRelays: [...prev.publishRelays, ''] 
+                  }));
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Relay
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              These relays will receive all published content (events, blog posts, etc.).
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Admin User Management */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Admin User Roles
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Manage permissions for users listed in the remote nostr.json. 
+            {isMasterUser ? " As the master user, you can assign roles." : " View only access."}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-4 border rounded-lg bg-muted/50">
+              <ShieldAlert className="h-5 w-5 text-amber-500" />
+              <div className="text-sm">
+                <span className="font-bold">Primary Admins:</span> Content published by these users is shown immediately on the site.
+              </div>
+            </div>
+            <div className="flex items-center gap-2 p-4 border rounded-lg bg-muted/50">
+              <CheckCircle2 className="h-5 w-5 text-blue-500" />
+              <div className="text-sm">
+                <span className="font-bold">Secondary Admins:</span> Content published by these users requires delegation/approval by a primary admin.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {remoteNostrJson?.names && Object.entries(remoteNostrJson.names).map(([name, pubkey]) => {
+              const normalizedPubkey = pubkey.toLowerCase().trim();
+              const normalizedMaster = masterPubkey.toLowerCase().trim();
+              
+              return (
+                <UserRoleManager
+                  key={normalizedPubkey}
+                  pubkey={normalizedPubkey}
+                  name={name}
+                  role={siteConfig.adminRoles[normalizedPubkey]}
+                  isMasterOfSession={isMasterUser}
+                  isThisUserMaster={normalizedPubkey === normalizedMaster}
+                  onRoleChange={(role) => {
+                    setSiteConfig(prev => ({
+                      ...prev,
+                      adminRoles: {
+                        ...prev.adminRoles,
+                        [normalizedPubkey]: role
+                      }
+                    }));
+                  }}
+                />
+              );
+            })}
+            {(!remoteNostrJson?.names || Object.keys(remoteNostrJson.names).length === 0) && (
+              <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
+                No users found in remote nostr.json
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

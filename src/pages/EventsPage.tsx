@@ -38,20 +38,30 @@ const sortOptions = [
 ];
 
 export default function EventsPage() {
+  const { config: appContext } = useAppContext();
   const { nostr } = useDefaultRelay();
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('upcoming');
   const [sort, setSort] = useState('date-asc');
 
   const { data: events = [], isLoading } = useQuery({
-    queryKey: ['events'],
+    queryKey: ['events', appContext.siteConfig?.adminRoles],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
       const eventList = await nostr.query([
         { kinds: [31922, 31923], limit: 100 }
       ], { signal });
       
-      return eventList.map(event => {
+      const adminRoles = appContext.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+
+      return eventList
+        .filter(event => {
+          const authorPubkey = event.pubkey.toLowerCase().trim();
+          if (authorPubkey === masterPubkey) return true;
+          return adminRoles[authorPubkey] === 'primary';
+        })
+        .map(event => {
         const tags = event.tags || [];
         const startTag = tags.find(([name]) => name === 'start')?.[1] || '0';
         const endTag = tags.find(([name]) => name === 'end')?.[1];
@@ -121,7 +131,6 @@ export default function EventsPage() {
     return event.end ? event.end * 1000 < now : event.start * 1000 < now;
   };
 
-  const { config: appContext } = useAppContext();
   const siteTitle = appContext.siteConfig?.title || 'Community Meetup';
 
   useSeoMeta({

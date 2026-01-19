@@ -34,6 +34,7 @@ interface SiteConfig {
   maxBlogPosts: number;
   defaultRelay: string;
   publishRelays: string[];
+  adminRoles: Record<string, 'primary' | 'secondary'>;
 }
 
 export default function AdminSettings() {
@@ -71,6 +72,7 @@ export default function AdminSettings() {
     publishRelays: config.siteConfig?.publishRelays ?? Array.from(
       (import.meta.env.VITE_PUBLISH_RELAYS || '').split(',').filter(Boolean)
     ),
+    adminRoles: config.siteConfig?.adminRoles ?? {},
   }));
 
   // Sync state with config when it changes (e.g. after loading from localStorage or Relay)
@@ -88,6 +90,7 @@ export default function AdminSettings() {
         ...config.siteConfig,
         // Ensure arrays are handled correctly if partial
         publishRelays: config.siteConfig?.publishRelays ?? prev.publishRelays,
+        adminRoles: config.siteConfig?.adminRoles ?? prev.adminRoles,
       }) as SiteConfig);
     }
     if (config.navigation) {
@@ -158,6 +161,16 @@ export default function AdminSettings() {
           }
         }
 
+        const adminRolesTag = eventTags.find(([name]) => name === 'admin_roles')?.[1];
+        if (adminRolesTag) {
+          try {
+            const parsed = JSON.parse(adminRolesTag);
+            if (parsed && typeof parsed === 'object') loadedConfig.adminRoles = parsed;
+          } catch (e) {
+            console.error('Failed to parse admin_roles tag', e);
+          }
+        }
+
         // Also load navigation from content
         let loadedNavigation: NavigationItem[] = [];
         try {
@@ -217,6 +230,7 @@ export default function AdminSettings() {
         ['max_blog_posts', siteConfig.maxBlogPosts.toString()],
         ['default_relay', siteConfig.defaultRelay],
         ['publish_relays', JSON.stringify(siteConfig.publishRelays)],
+        ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
       ];
 
       publishEvent({
@@ -373,71 +387,6 @@ export default function AdminSettings() {
               onChange={(e) => setSiteConfig(prev => ({ ...prev, heroBackground: e.target.value }))}
               placeholder="https://..."
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Relay Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Relay Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="defaultRelay">Default Relay (for content)</Label>
-            <Input
-              id="defaultRelay"
-              value={siteConfig.defaultRelay}
-              onChange={(e) => setSiteConfig(prev => ({ ...prev, defaultRelay: e.target.value }))}
-              placeholder={import.meta.env.VITE_DEFAULT_RELAY}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              This relay will be used to read all content for the public site.
-            </p>
-          </div>
-          
-          <div>
-            <Label htmlFor="publishRelays">Publishing Relays</Label>
-            <div className="space-y-2">
-              {siteConfig.publishRelays.map((relay, index) => (
-                <div key={index} className="flex gap-2">
-                  <Input
-                    value={relay}
-                    onChange={(e) => {
-                      const newRelays = [...siteConfig.publishRelays];
-                      newRelays[index] = e.target.value;
-                      setSiteConfig(prev => ({ ...prev, publishRelays: newRelays }));
-                    }}
-                    placeholder="wss://relay.example.com"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newRelays = siteConfig.publishRelays.filter((_, i) => i !== index);
-                      setSiteConfig(prev => ({ ...prev, publishRelays: newRelays }));
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSiteConfig(prev => ({ 
-                    ...prev, 
-                    publishRelays: [...prev.publishRelays, ''] 
-                  }));
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Relay
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              These relays will receive all published content (events, blog posts, etc.).
-            </p>
           </div>
         </CardContent>
       </Card>

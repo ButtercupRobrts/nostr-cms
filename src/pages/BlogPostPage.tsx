@@ -61,7 +61,7 @@ export default function BlogPostPage() {
   const { config } = useAppContext();
 
   const { data: post, isLoading } = useQuery({
-    queryKey: ['blog-post', postId],
+    queryKey: ['blog-post', postId, config.siteConfig?.adminRoles],
     queryFn: async () => {
       if (!postId) return null;
       const [event] = await nostr.query([
@@ -69,6 +69,12 @@ export default function BlogPostPage() {
       ]);
       
       if (!event) return null;
+
+      const adminRoles = config.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      
+      const authorPubkey = event.pubkey.toLowerCase().trim();
+      if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'primary') return null;
 
       return {
         id: event.id,

@@ -31,6 +31,8 @@ export interface AppConfig {
     defaultRelay?: string;
     /** Publishing relays for blasting content */
     publishRelays?: string[];
+    /** Admin roles mapping: pubkey -> 'primary' | 'secondary' */
+    adminRoles?: Record<string, 'primary' | 'secondary'>;
   };
   /** Navigation configuration */
   navigation?: Array<{

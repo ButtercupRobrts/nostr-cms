@@ -6,16 +6,18 @@ import remarkGfm from 'remark-gfm';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import Navigation from '@/components/Navigation';
+import { useAppContext } from '@/hooks/useAppContext';
 import { useEffect, useState } from 'react';
 
 export default function StaticPage({ pathOverride }: { pathOverride?: string }) {
+  const { config: appContext } = useAppContext();
   const { path } = useParams<{ path: string }>();
   const { poolNostr, nostr: defaultRelay } = useDefaultRelay();
   const [content, setContent] = useState<string | null>(null);
   const fullPath = pathOverride || `/${path}`;
 
   const { data: pageEvent, isLoading: isEventLoading, error, refetch } = useQuery({
-    queryKey: ['static-page', fullPath],
+    queryKey: ['static-page', fullPath, appContext.siteConfig?.adminRoles],
     queryFn: async () => {
       console.log('StaticPage: Querying for path:', fullPath);
       const signal = AbortSignal.timeout(5000);
@@ -40,7 +42,16 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
       
       console.log('StaticPage: Found events:', events);
       
-      return events.sort((a, b) => b.created_at - a.created_at)[0] || null;
+      const adminRoles = appContext.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      
+      return events
+        .filter(event => {
+          const authorPubkey = event.pubkey.toLowerCase().trim();
+          if (authorPubkey === masterPubkey) return true;
+          return adminRoles[authorPubkey] === 'primary';
+        })
+        .sort((a, b) => b.created_at - a.created_at)[0] || null;
     },
     enabled: !!fullPath,
     staleTime: 30000, 

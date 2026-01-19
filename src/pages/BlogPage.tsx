@@ -65,18 +65,28 @@ function AuthorInfo({ pubkey }: { pubkey: string }) {
 }
 
 export default function BlogPage() {
+  const { config } = useAppContext();
   const { nostr } = useDefaultRelay();
   const [searchTerm, setSearchTerm] = useState('');
 
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ['blog-posts'],
+    queryKey: ['blog-posts', config.siteConfig?.adminRoles],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
       const postList = await nostr.query([
         { kinds: [30023], limit: 100 }
       ], { signal });
       
-      return postList.map(event => ({
+      const adminRoles = config.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+
+      return postList
+        .filter(event => {
+          const authorPubkey = event.pubkey.toLowerCase().trim();
+          if (authorPubkey === masterPubkey) return true;
+          return adminRoles[authorPubkey] === 'primary';
+        })
+        .map(event => ({
         id: event.id,
         title: event.tags.find(([name]) => name === 'title')?.[1] || 'Untitled',
         content: event.content,
@@ -95,7 +105,6 @@ export default function BlogPage() {
     )
   );
 
-  const { config } = useAppContext();
   const siteTitle = config.siteConfig?.title || 'Community Meetup';
 
   useSeoMeta({

@@ -279,14 +279,27 @@ const Index = () => {
   
   // Fetch events
   const { data: events = [], isLoading: eventsLoading } = useQuery({
-    queryKey: ['events', config.siteConfig?.defaultRelay], // Add defaultRelay to key to trigger re-fetch
+    queryKey: ['events', config.siteConfig?.defaultRelay, config.siteConfig?.adminRoles], 
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
       const eventList = await nostr.query([
         { kinds: [31922, 31923], limit: 50 }
       ], { signal });
       
-      return eventList.map(event => {
+      const adminRoles = config.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+
+      return eventList
+        .filter(event => {
+          const authorPubkey = event.pubkey.toLowerCase().trim();
+          // Always show if author is the master user
+          if (authorPubkey === masterPubkey) return true;
+          
+          const role = adminRoles[authorPubkey];
+          // Only show if author is a primary admin
+          return role === 'primary';
+        })
+        .map(event => {
         const tags = event.tags || [];
         const startTag = tags.find(([name]) => name === 'start')?.[1] || '0';
         const endTag = tags.find(([name]) => name === 'end')?.[1];
@@ -320,14 +333,27 @@ const Index = () => {
 
   // Fetch blog posts
   const { data: posts = [], isLoading: postsLoading } = useQuery({
-    queryKey: ['blog-posts', config.siteConfig?.defaultRelay], // Add defaultRelay to key to trigger re-fetch
+    queryKey: ['blog-posts', config.siteConfig?.defaultRelay, config.siteConfig?.adminRoles],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
       const postList = await nostr.query([
         { kinds: [30023], limit: 50 }
       ], { signal });
       
-      return postList.map(event => ({
+      const adminRoles = config.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+
+      return postList
+        .filter(event => {
+          const authorPubkey = event.pubkey.toLowerCase().trim();
+          // Always show if author is the master user
+          if (authorPubkey === masterPubkey) return true;
+
+          const role = adminRoles[authorPubkey];
+          // Only show if author is a primary admin
+          return role === 'primary';
+        })
+        .map(event => ({
         id: event.id,
         title: event.tags.find(([name]) => name === 'title')?.[1] || 'Untitled',
         content: event.content,

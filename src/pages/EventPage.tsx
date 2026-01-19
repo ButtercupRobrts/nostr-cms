@@ -19,7 +19,7 @@ export default function EventPage() {
   const { config } = useAppContext();
 
   const { data: event, isLoading } = useQuery({
-    queryKey: ['event', eventId],
+    queryKey: ['event', eventId, config.siteConfig?.adminRoles],
     queryFn: async () => {
       if (!eventId) return null;
       
@@ -31,6 +31,13 @@ export default function EventPage() {
       if (events.length === 0) return null;
       
       const e = events[0];
+
+      const adminRoles = config.siteConfig?.adminRoles || {};
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      
+      const authorPubkey = e.pubkey.toLowerCase().trim();
+      if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'primary') return null;
+      
       const tags = e.tags || [];
       const startTag = tags.find(([name]) => name === 'start')?.[1] || '0';
       const endTag = tags.find(([name]) => name === 'end')?.[1];
