@@ -33,6 +33,8 @@ export interface AppConfig {
     publishRelays?: string[];
     /** Admin roles mapping: pubkey -> 'primary' | 'secondary' */
     adminRoles?: Record<string, 'primary' | 'secondary'>;
+    /** Last time the site config was updated from/to Nostr */
+    updatedAt?: number;
   };
   /** Navigation configuration */
   navigation?: Array<{

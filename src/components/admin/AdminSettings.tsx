@@ -35,6 +35,7 @@ interface SiteConfig {
   defaultRelay: string;
   publishRelays: string[];
   adminRoles: Record<string, 'primary' | 'secondary'>;
+  updatedAt?: number;
 }
 
 export default function AdminSettings() {
@@ -100,15 +101,15 @@ export default function AdminSettings() {
 
   // Load existing site configuration from NIP-78 kind 30078
   const handleLoadConfig = async () => {
-    if (!user) return;
     setIsRefreshing(true);
 
     try {
+      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
       const signal = AbortSignal.timeout(5000);
       const events = await nostr.query([
         {
           kinds: [30078],
-          authors: [user.pubkey],
+          authors: [masterPubkey],
           '#d': ['nostr-meetup-site-config'],
           limit: 1
         }
@@ -134,9 +135,13 @@ export default function AdminSettings() {
         Object.entries(tags).forEach(([key, tagName]) => {
           const val = eventTags.find(([name]) => name === tagName)?.[1];
           if (val !== undefined) {
-            (loadedConfig as Record<string, string | boolean | number | string[] | undefined>)[key] = val;
+            (loadedConfig as Record<string, string | boolean | number | string[] | Record<string, string> | undefined>)[key] = val;
           }
         });
+
+        const updatedAtTag = eventTags.find(([name]) => name === 'updated_at')?.[1];
+        const eventUpdatedAt = updatedAtTag ? parseInt(updatedAtTag) : event.created_at;
+        loadedConfig.updatedAt = eventUpdatedAt;
 
         // Handle booleans and numbers separately
         const showEvents = eventTags.find(([name]) => name === 'show_events')?.[1];
@@ -196,6 +201,7 @@ export default function AdminSettings() {
           siteConfig: {
             ...(currentConfig.siteConfig || {}),
             ...loadedConfig,
+            updatedAt: eventUpdatedAt,
           },
           navigation: loadedNavigation,
         }));
@@ -231,6 +237,7 @@ export default function AdminSettings() {
         ['default_relay', siteConfig.defaultRelay],
         ['publish_relays', JSON.stringify(siteConfig.publishRelays)],
         ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
+        ['updated_at', Math.floor(Date.now() / 1000).toString()],
       ];
 
       publishEvent({
@@ -248,6 +255,7 @@ export default function AdminSettings() {
         siteConfig: {
           ...(currentConfig.siteConfig || {}),
           ...siteConfig,
+          updatedAt: Math.floor(Date.now() / 1000),
         },
         navigation,
       }));

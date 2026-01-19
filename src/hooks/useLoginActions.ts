@@ -32,16 +32,6 @@ export function useLoginActions() {
         removeLogin(login.id);
       }
 
-      // Clear all app-related localStorage
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) {
-          keysToRemove.push(key);
-        }
-      }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
-
       // Clear TanStack Query cache
       queryClient.clear();
 

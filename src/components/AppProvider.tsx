@@ -40,6 +40,8 @@ const AppConfigSchema = z.object({
     maxBlogPosts: z.number().optional(),
     defaultRelay: z.string().optional(),
     publishRelays: z.array(z.string()).optional(),
+    adminRoles: z.record(z.string(), z.enum(['primary', 'secondary'])).optional(),
+    updatedAt: z.number().optional(),
   }).optional(),
   navigation: z.array(z.object({
     id: z.string(),
@@ -85,7 +87,7 @@ export function AppProvider(props: AppProviderProps) {
     // Start with defaultConfig
     const merged = { ...defaultConfig };
     
-    console.log('[AppProvider] rawConfig from localStorage:', rawConfig);
+    const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
 
     // Merge rawConfig (localStorage)
     if (rawConfig.theme) merged.theme = rawConfig.theme;
@@ -97,12 +99,24 @@ export function AppProvider(props: AppProviderProps) {
         ...(defaultConfig.siteConfig || {}),
         ...(rawConfig.siteConfig || {}),
       };
+
+      // Ensure adminRoles exists
+      if (!merged.siteConfig.adminRoles) {
+        merged.siteConfig.adminRoles = {};
+      }
+
+      // INJECT MASTER PUBKEY: Ensure master user is always a primary admin
+      if (masterPubkey) {
+        merged.siteConfig.adminRoles = {
+          ...merged.siteConfig.adminRoles,
+          [masterPubkey]: 'primary'
+        };
+      }
     }
     
     // Use rawConfig navigation if it exists, otherwise defaultConfig
     if (rawConfig.navigation) merged.navigation = rawConfig.navigation;
     
-    console.log('[AppProvider] Final merged config:', merged);
     return merged;
   }, [defaultConfig, rawConfig]);
 
