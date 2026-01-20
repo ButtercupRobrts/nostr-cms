@@ -43,9 +43,8 @@ const TWEAKCN_THEMES = [
   { name: 'Default', url: '' },
   { name: 'Tangerine', url: 'https://tweakcn.com/r/themes/tangerine.json' },
   { name: 'Amethyst Haze', url: 'https://tweakcn.com/r/themes/amethyst-haze.json' },
-  { name: 'Midnight', url: 'https://tweakcn.com/r/themes/midnight.json' },
-  { name: 'Rose', url: 'https://tweakcn.com/r/themes/rose.json' },
-  { name: 'Slate', url: 'https://tweakcn.com/r/themes/slate.json' },
+  { name: 'Midnight Bloom', url: 'https://tweakcn.com/r/themes/midnight-bloom.json' },
+  { name: 'Clean Slate', url: 'https://tweakcn.com/r/themes/clean-slate.json' },
 ];
 
 export default function AdminSettings() {
