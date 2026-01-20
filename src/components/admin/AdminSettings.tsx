@@ -1,16 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAppContext } from '@/hooks/useAppContext';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/useToast';
 
 interface NavigationItem {
   id: string;
@@ -40,11 +48,12 @@ interface SiteConfig {
 }
 
 const TWEAKCN_THEMES = [
-  { name: 'Default', url: '' },
+  { name: 'Default', url: 'none' },
   { name: 'Tangerine', url: 'https://tweakcn.com/r/themes/tangerine.json' },
   { name: 'Amethyst Haze', url: 'https://tweakcn.com/r/themes/amethyst-haze.json' },
   { name: 'Midnight Bloom', url: 'https://tweakcn.com/r/themes/midnight-bloom.json' },
   { name: 'Clean Slate', url: 'https://tweakcn.com/r/themes/clean-slate.json' },
+  { name: 'Bold Tech', url: 'https://tweakcn.com/r/themes/bold-tech.json' },
 ];
 
 export default function AdminSettings() {
@@ -53,9 +62,11 @@ export default function AdminSettings() {
   const queryClient = useQueryClient();
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { toast } = useToast();
 
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [previewThemeUrl, setPreviewThemeUrl] = useState<string | null>(null);
 
   const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
@@ -89,6 +100,108 @@ export default function AdminSettings() {
     adminRoles: config.siteConfig?.adminRoles ?? {},
     tweakcnThemeUrl: config.siteConfig?.tweakcnThemeUrl ?? '',
   }));
+
+  const isDirty = useMemo(() => {
+    const originalConfig = config.siteConfig || {};
+    const hasConfigChanged = 
+      siteConfig.title !== (originalConfig.title ?? 'My Meetup Site') ||
+      siteConfig.logo !== (originalConfig.logo ?? '') ||
+      siteConfig.favicon !== (originalConfig.favicon ?? '') ||
+      siteConfig.ogImage !== (originalConfig.ogImage ?? '') ||
+      siteConfig.heroTitle !== (originalConfig.heroTitle ?? 'Welcome to Our Community') ||
+      siteConfig.heroSubtitle !== (originalConfig.heroSubtitle ?? 'Join us for amazing meetups and events') ||
+      siteConfig.heroBackground !== (originalConfig.heroBackground ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop') ||
+      siteConfig.showEvents !== (originalConfig.showEvents ?? true) ||
+      siteConfig.showBlog !== (originalConfig.showBlog ?? true) ||
+      siteConfig.maxEvents !== (originalConfig.maxEvents ?? 6) ||
+      siteConfig.maxBlogPosts !== (originalConfig.maxBlogPosts ?? 3) ||
+      siteConfig.defaultRelay !== (originalConfig.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY ?? '') ||
+      siteConfig.tweakcnThemeUrl !== (originalConfig.tweakcnThemeUrl ?? '');
+    
+    const hasNavChanged = JSON.stringify(navigation) !== JSON.stringify(config.navigation || [
+      { id: '1', name: 'Home', href: '/', isSubmenu: false },
+      { id: '2', name: 'Events', href: '/events', isSubmenu: false },
+      { id: '3', name: 'Blog', href: '/blog', isSubmenu: false },
+      { id: '4', name: 'About', href: '/about', isSubmenu: false },
+      { id: '5', name: 'Contact', href: '/contact', isSubmenu: false },
+    ]);
+
+    return hasConfigChanged || hasNavChanged;
+  }, [siteConfig, navigation, config]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  // Handle theme preview
+  useEffect(() => {
+    const themeToApply = previewThemeUrl ?? siteConfig.tweakcnThemeUrl;
+    
+    if (!themeToApply) {
+      const existingStyle = document.getElementById('tweakcn-theme');
+      if (existingStyle && !previewThemeUrl) {
+        // Only remove if we're not in preview mode and there's no saved theme
+        existingStyle.remove();
+      }
+      return;
+    }
+
+    const fetchTheme = async () => {
+      try {
+        const response = await fetch(themeToApply);
+        if (!response.ok) throw new Error(`Failed to fetch theme: ${response.statusText}`);
+        const themeData = await response.json();
+        const vars = themeData.cssVars || themeData;
+
+        let cssVars = '';
+        const formatVars = (entries: Record<string, string>) => {
+          return Object.entries(entries)
+            .map(([k, v]) => {
+              const varName = k === 'sidebar' ? 'sidebar-background' : k;
+              return `--${varName}: ${v};`;
+            })
+            .join(' ');
+        };
+
+        if (vars.light) cssVars += `:root { ${formatVars(vars.light)} }\n`;
+        if (vars.dark) cssVars += `.dark { ${formatVars(vars.dark)} }\n`;
+        if (vars.theme) cssVars += `:root { ${formatVars(vars.theme)} }\n`;
+        if (!vars.light && !vars.dark && !vars.theme) {
+          cssVars += `:root { ${formatVars(vars)} }`;
+        }
+
+        let styleTag = document.getElementById('tweakcn-theme') as HTMLStyleElement;
+        if (!styleTag) {
+          styleTag = document.createElement('style');
+          styleTag.id = 'tweakcn-theme';
+          document.head.appendChild(styleTag);
+        }
+        styleTag.textContent = cssVars;
+      } catch (error) {
+        console.error('Error applying theme preview:', error);
+      }
+    };
+
+    fetchTheme();
+    
+    // Cleanup preview on unmount if it was just a preview
+    return () => {
+      if (previewThemeUrl) {
+        // Re-apply original theme from config if we were previewing
+        const originalTheme = siteConfig.tweakcnThemeUrl;
+        if (!originalTheme) {
+          document.getElementById('tweakcn-theme')?.remove();
+        }
+      }
+    };
+  }, [previewThemeUrl, siteConfig.tweakcnThemeUrl]);
 
   // Sync state with config when it changes (e.g. after loading from localStorage or Relay)
   // but only if we're not currently saving or refreshing to avoid overwriting user input
@@ -399,17 +512,41 @@ export default function AdminSettings() {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Select a Preset Theme</Label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {TWEAKCN_THEMES.map((theme) => (
-                <Button
-                  key={theme.name}
-                  variant={siteConfig.tweakcnThemeUrl === theme.url ? "default" : "outline"}
-                  className="w-full justify-start"
-                  onClick={() => setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: theme.url }))}
+            <div className="flex gap-2">
+              <Select
+                value={TWEAKCN_THEMES.find(t => t.url === siteConfig.tweakcnThemeUrl)?.url ?? 'none'}
+                onValueChange={(url) => {
+                  setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: url === 'none' ? '' : url }));
+                  setPreviewThemeUrl(null); // Clear preview when selection changes
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TWEAKCN_THEMES.map((theme) => (
+                    <SelectItem key={theme.name} value={theme.url}>
+                      {theme.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {siteConfig.tweakcnThemeUrl && TWEAKCN_THEMES.some(t => t.url === siteConfig.tweakcnThemeUrl) && (
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  title="Preview Theme"
+                  onClick={() => {
+                    setPreviewThemeUrl(siteConfig.tweakcnThemeUrl || null);
+                    toast({
+                      title: "Theme Preview",
+                      description: "Previewing selected theme. Save changes to apply permanently.",
+                    });
+                  }}
                 >
-                  {theme.name}
+                  <Eye className="h-4 w-4" />
                 </Button>
-              ))}
+              )}
             </div>
           </div>
           
@@ -421,22 +558,55 @@ export default function AdminSettings() {
               <Input
                 id="customThemeUrl"
                 value={siteConfig.tweakcnThemeUrl}
-                onChange={(e) => setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: e.target.value }))}
+                onChange={(e) => {
+                  setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: e.target.value }));
+                  setPreviewThemeUrl(null);
+                }}
                 placeholder="https://tweakcn.com/r/themes/..."
               />
-              {siteConfig.tweakcnThemeUrl && !TWEAKCN_THEMES.some(t => t.url === siteConfig.tweakcnThemeUrl) && (
-                <Button 
-                  variant="outline" 
-                  onClick={() => setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: '' }))}
-                >
-                  Clear
-                </Button>
-              )}
+              <div className="flex gap-1">
+                {siteConfig.tweakcnThemeUrl && (
+                  <Button 
+                    variant="outline" 
+                    size="icon"
+                    title="Preview Custom Theme"
+                    onClick={() => {
+                      if (siteConfig.tweakcnThemeUrl) {
+                        setPreviewThemeUrl(siteConfig.tweakcnThemeUrl);
+                        toast({
+                          title: "Custom Theme Preview",
+                          description: "Previewing custom theme. Save changes to apply permanently.",
+                        });
+                      }
+                    }}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                )}
+                {siteConfig.tweakcnThemeUrl && !TWEAKCN_THEMES.some(t => t.url === siteConfig.tweakcnThemeUrl) && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: '' }));
+                      setPreviewThemeUrl(null);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">
               Enter a direct link to a TweakCN theme JSON file to apply custom styling.
             </p>
           </div>
+
+          {isDirty && (
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 rounded-md text-sm border border-yellow-200 dark:border-yellow-900/30">
+              <AlertCircle className="h-4 w-4" />
+              <span>You have unsaved changes. Remember to save before navigating away.</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
