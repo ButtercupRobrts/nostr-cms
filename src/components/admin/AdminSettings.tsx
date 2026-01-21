@@ -17,7 +17,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
+import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import {
   DndContext,
@@ -127,7 +127,7 @@ function SortableNavItem({ item, onUpdate, onRemove }: SortableNavItemProps) {
 
 export default function AdminSettings() {
   const { config, updateConfig } = useAppContext();
-  const { mutate: publishEvent } = useNostrPublish();
+  const { mutateAsync: publishEvent } = useNostrPublish();
   const queryClient = useQueryClient();
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
@@ -140,7 +140,7 @@ export default function AdminSettings() {
   const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
 
-  const [navigation, setNavigation] = useState<NavigationItem[]>(() => 
+  const [navigation, setNavigation] = useState<NavigationItem[]>(() =>
     config.navigation ?? [
       { id: '1', name: 'Home', href: '/', isSubmenu: false },
       { id: '2', name: 'Events', href: '/events', isSubmenu: false },
@@ -175,7 +175,7 @@ export default function AdminSettings() {
 
   const isDirty = useMemo(() => {
     const originalConfig = config.siteConfig || {};
-    const hasConfigChanged = 
+    const hasConfigChanged =
       siteConfig.title !== (originalConfig.title ?? 'My Meetup Site') ||
       siteConfig.logo !== (originalConfig.logo ?? '') ||
       siteConfig.favicon !== (originalConfig.favicon ?? '') ||
@@ -189,7 +189,7 @@ export default function AdminSettings() {
       siteConfig.maxBlogPosts !== (originalConfig.maxBlogPosts ?? 3) ||
       siteConfig.defaultRelay !== (originalConfig.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY) ||
       siteConfig.tweakcnThemeUrl !== (originalConfig.tweakcnThemeUrl ?? '');
-    
+
     const hasNavChanged = JSON.stringify(navigation) !== JSON.stringify(config.navigation || [
       { id: '1', name: 'Home', href: '/', isSubmenu: false },
       { id: '2', name: 'Events', href: '/events', isSubmenu: false },
@@ -215,7 +215,7 @@ export default function AdminSettings() {
   // Handle theme preview
   useEffect(() => {
     const themeToApply = previewThemeUrl ?? siteConfig.tweakcnThemeUrl;
-    
+
     if (!themeToApply) {
       const existingStyle = document.getElementById('tweakcn-theme');
       if (existingStyle && !previewThemeUrl) {
@@ -262,7 +262,7 @@ export default function AdminSettings() {
     };
 
     fetchTheme();
-    
+
     // Cleanup preview on unmount if it was just a preview
     return () => {
       if (previewThemeUrl) {
@@ -348,7 +348,7 @@ export default function AdminSettings() {
       if (events.length > 0) {
         const event = events[0];
         const loadedConfig: Partial<SiteConfig> = {};
-        
+
         const tags = {
           title: 'title',
           logo: 'logo',
@@ -377,13 +377,13 @@ export default function AdminSettings() {
         // Handle booleans and numbers separately
         const showEvents = eventTags.find(([name]) => name === 'show_events')?.[1];
         if (showEvents !== undefined) loadedConfig.showEvents = showEvents === 'true';
-        
+
         const showBlog = eventTags.find(([name]) => name === 'show_blog')?.[1];
         if (showBlog !== undefined) loadedConfig.showBlog = showBlog === 'true';
-        
+
         const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
         if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
-        
+
         const maxBlogPosts = eventTags.find(([name]) => name === 'max_blog_posts')?.[1];
         if (maxBlogPosts !== undefined) loadedConfig.maxBlogPosts = parseInt(maxBlogPosts);
 
@@ -425,7 +425,7 @@ export default function AdminSettings() {
           ...loadedConfig
         }) as SiteConfig);
         setNavigation(loadedNavigation);
-        
+
         // Update local app config immediately
         updateConfig((currentConfig) => ({
           ...currentConfig,
@@ -450,7 +450,7 @@ export default function AdminSettings() {
   const handleSaveConfig = async () => {
     setIsSaving(true);
     const filteredRelays = siteConfig.publishRelays.filter(r => r.trim() !== '');
-    
+
     try {
       // Save site configuration as a replaceable event (kind 30078) following NIP-78
       console.log('Saving config to Nostr and local context...', siteConfig);
@@ -504,6 +504,31 @@ export default function AdminSettings() {
     }
   };
 
+  const handleResetToDefaults = async () => {
+    if (window.confirm('Are you sure you want to reset all settings to defaults? This will clear all local storage, cached data, and DE-CONFIGURE the site from relays (publish a deletion for the remote config). You will be logged out and the site will return to its original environment variable state.')) {
+      try {
+        // Publish deletion event (Kind 5) for the NIP-78 site config
+        await publishEvent({
+          event: {
+            kind: 5,
+            content: "Resetting site configuration to defaults",
+            tags: [
+              ['a', `30078:${masterPubkey}:nostr-meetup-site-config`],
+              ['alt', 'Delete site configuration']
+            ]
+          }
+        });
+        console.log('[handleResetToDefaults] Remote deletion event published');
+      } catch (e) {
+        console.error('[handleResetToDefaults] Failed to delete remote config:', e);
+      }
+
+      localStorage.clear();
+      queryClient.clear();
+      window.location.href = '/';
+    }
+  };
+
   const addNavigationItem = () => {
     if (navigation.length >= 5) {
       toast({
@@ -528,7 +553,7 @@ export default function AdminSettings() {
   };
 
   const updateNavigationItem = (id: string, updates: Partial<NavigationItem>) => {
-    setNavigation(navigation.map(item => 
+    setNavigation(navigation.map(item =>
       item.id === id ? { ...item, ...updates } : item
     ));
   };
@@ -543,6 +568,10 @@ export default function AdminSettings() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="destructive" onClick={handleResetToDefaults}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset to Defaults
+          </Button>
           <Button variant="outline" onClick={handleLoadConfig} disabled={isRefreshing || !user}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             {isRefreshing ? 'Refreshing...' : 'Refresh from Relay'}
@@ -632,8 +661,8 @@ export default function AdminSettings() {
                 </SelectContent>
               </Select>
               {siteConfig.tweakcnThemeUrl && TWEAKCN_THEMES.some(t => t.url === siteConfig.tweakcnThemeUrl) && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="icon"
                   title="Preview Theme"
                   onClick={() => {
@@ -649,9 +678,9 @@ export default function AdminSettings() {
               )}
             </div>
           </div>
-          
+
           <Separator />
-          
+
           <div className="space-y-2">
             <Label htmlFor="customThemeUrl">Custom TweakCN Theme URL</Label>
             <div className="flex gap-2">
@@ -666,8 +695,8 @@ export default function AdminSettings() {
               />
               <div className="flex gap-1">
                 {siteConfig.tweakcnThemeUrl && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="icon"
                     title="Preview Custom Theme"
                     onClick={() => {
@@ -684,8 +713,8 @@ export default function AdminSettings() {
                   </Button>
                 )}
                 {siteConfig.tweakcnThemeUrl && !TWEAKCN_THEMES.some(t => t.url === siteConfig.tweakcnThemeUrl) && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => {
                       setSiteConfig(prev => ({ ...prev, tweakcnThemeUrl: '' }));
                       setPreviewThemeUrl(null);
@@ -816,7 +845,7 @@ export default function AdminSettings() {
               Add Item
             </Button>
           </div>
-          
+
           <div className="space-y-4">
             <DndContext
               sensors={sensors}
@@ -838,7 +867,7 @@ export default function AdminSettings() {
               </SortableContext>
             </DndContext>
           </div>
-          
+
         </CardContent>
       </Card>
     </div>

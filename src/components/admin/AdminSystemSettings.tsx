@@ -8,7 +8,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Save, Plus, Trash2, RefreshCw, User, Shield, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Save, Plus, Trash2, RefreshCw, User, Shield, ShieldAlert, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -34,16 +34,16 @@ interface SiteConfig {
   updatedAt?: number;
 }
 
-function UserRoleManager({ 
-  pubkey, 
-  name, 
-  role, 
+function UserRoleManager({
+  pubkey,
+  name,
+  role,
   isMasterOfSession,
   isThisUserMaster,
-  onRoleChange 
-}: { 
-  pubkey: string; 
-  name: string; 
+  onRoleChange
+}: {
+  pubkey: string;
+  name: string;
   role?: 'primary' | 'secondary';
   isMasterOfSession: boolean;
   isThisUserMaster: boolean;
@@ -70,15 +70,15 @@ function UserRoleManager({
           <div className="text-xs text-muted-foreground font-mono">{pubkey.slice(0, 8)}...{pubkey.slice(-8)}</div>
         </div>
       </div>
-      
+
       {isThisUserMaster ? (
         <div className="flex items-center gap-2 text-sm font-medium text-purple-600 px-3">
           <Shield className="h-4 w-4" />
           Primary Access (Owner)
         </div>
       ) : isMasterOfSession && (
-        <Select 
-          value={role || 'secondary'} 
+        <Select
+          value={role || 'secondary'}
           onValueChange={(val) => onRoleChange(val as 'primary' | 'secondary')}
         >
           <SelectTrigger className="w-[180px]">
@@ -96,7 +96,7 @@ function UserRoleManager({
 
 export default function AdminSystemSettings() {
   const { config, updateConfig } = useAppContext();
-  const { mutate: publishEvent } = useNostrPublish();
+  const { mutateAsync: publishEvent } = useNostrPublish();
   const queryClient = useQueryClient();
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
@@ -173,7 +173,7 @@ export default function AdminSystemSettings() {
       if (events.length > 0) {
         const event = events[0];
         const loadedConfig: Partial<SiteConfig> = {};
-        
+
         const tags = {
           title: 'title',
           logo: 'logo',
@@ -201,13 +201,13 @@ export default function AdminSystemSettings() {
 
         const showEvents = eventTags.find(([name]) => name === 'show_events')?.[1];
         if (showEvents !== undefined) loadedConfig.showEvents = showEvents === 'true';
-        
+
         const showBlog = eventTags.find(([name]) => name === 'show_blog')?.[1];
         if (showBlog !== undefined) loadedConfig.showBlog = showBlog === 'true';
-        
+
         const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
         if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
-        
+
         const maxBlogPosts = eventTags.find(([name]) => name === 'max_blog_posts')?.[1];
         if (maxBlogPosts !== undefined) loadedConfig.maxBlogPosts = parseInt(maxBlogPosts);
 
@@ -235,7 +235,7 @@ export default function AdminSystemSettings() {
           ...prev,
           ...loadedConfig
         }) as SiteConfig);
-        
+
         updateConfig((currentConfig) => ({
           ...currentConfig,
           siteConfig: {
@@ -305,6 +305,31 @@ export default function AdminSystemSettings() {
     }
   };
 
+  const handleResetToDefaults = async () => {
+    if (window.confirm('Are you sure you want to reset all settings to defaults? This will clear all local storage, cached data, and DE-CONFIGURE the site from relays (publish a deletion for the remote config). You will be logged out and the site will return to its original environment variable state.')) {
+      try {
+        // Publish deletion event (Kind 5) for the NIP-78 site config
+        await publishEvent({
+          event: {
+            kind: 5,
+            content: "Resetting site configuration to defaults",
+            tags: [
+              ['a', `30078:${masterPubkey}:nostr-meetup-site-config`],
+              ['alt', 'Delete site configuration']
+            ]
+          }
+        });
+        console.log('[handleResetToDefaults] Remote deletion event published');
+      } catch (e) {
+        console.error('[handleResetToDefaults] Failed to delete remote config:', e);
+      }
+
+      localStorage.clear();
+      queryClient.clear();
+      window.location.href = '/';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -315,6 +340,10 @@ export default function AdminSystemSettings() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="destructive" onClick={handleResetToDefaults}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset to Defaults
+          </Button>
           <Button variant="outline" onClick={handleLoadConfig} disabled={isRefreshing || !user}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
             {isRefreshing ? 'Refreshing...' : 'Refresh from Relay'}
@@ -350,7 +379,7 @@ export default function AdminSystemSettings() {
               </div>
             )}
           </div>
-          
+
           <div>
             <Label htmlFor="publishRelays">Additional Publishing Relays</Label>
             <div className="space-y-2">
@@ -380,9 +409,9 @@ export default function AdminSystemSettings() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setSiteConfig(prev => ({ 
-                    ...prev, 
-                    publishRelays: [...prev.publishRelays, ''] 
+                  setSiteConfig(prev => ({
+                    ...prev,
+                    publishRelays: [...prev.publishRelays, '']
                   }));
                 }}
               >
@@ -411,7 +440,7 @@ export default function AdminSystemSettings() {
             Admin User Roles
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Manage permissions for users listed in the remote nostr.json. 
+            Manage permissions for users listed in the remote nostr.json.
             {isMasterUser ? " As the master user, you can assign roles." : " View only access."}
           </p>
         </CardHeader>
@@ -435,7 +464,7 @@ export default function AdminSystemSettings() {
             {remoteNostrJson?.names && Object.entries(remoteNostrJson.names).map(([name, pubkey]) => {
               const normalizedPubkey = pubkey.toLowerCase().trim();
               const normalizedMaster = masterPubkey.toLowerCase().trim();
-              
+
               return (
                 <UserRoleManager
                   key={normalizedPubkey}
