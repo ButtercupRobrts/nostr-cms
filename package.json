@@ -10,6 +10,9 @@
     "test": "npm i --silent && tsc --noEmit && eslint && vitest run --reporter=dot --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'All tests passed!'"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/inter": "^5.2.6",
     "@getalby/sdk": "^5.1.1",
     "@hookform/resolvers": "^3.9.0",

@@ -19,6 +19,23 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface NavigationItem {
   id: string;
@@ -55,6 +72,58 @@ const TWEAKCN_THEMES = [
   { name: 'Clean Slate', url: 'https://tweakcn.com/r/themes/clean-slate.json' },
   { name: 'Bold Tech', url: 'https://tweakcn.com/r/themes/bold-tech.json' },
 ];
+
+interface SortableNavItemProps {
+  item: NavigationItem;
+  onUpdate: (id: string, updates: Partial<NavigationItem>) => void;
+  onRemove: (id: string) => void;
+}
+
+function SortableNavItem({ item, onUpdate, onRemove }: SortableNavItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 p-3 border rounded-md bg-card"
+    >
+      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+        <Input
+          value={item.name}
+          onChange={(e) => onUpdate(item.id, { name: e.target.value })}
+          placeholder="Name"
+        />
+        <Input
+          value={item.href}
+          onChange={(e) => onUpdate(item.id, { href: e.target.value })}
+          placeholder="/path"
+        />
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onRemove(item.id)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
 
 export default function AdminSettings() {
   const { config, updateConfig } = useAppContext();
@@ -225,6 +294,25 @@ export default function AdminSettings() {
       setNavigation(config.navigation);
     }
   }, [config.siteConfig, config.navigation, isSaving, isRefreshing]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setNavigation((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   if (!isMasterUser) {
     return (
@@ -410,21 +498,27 @@ export default function AdminSettings() {
     }
   };
 
-  const addNavigationItem = (isSubmenu: boolean = false, parentId?: string) => {
+  const addNavigationItem = () => {
+    if (navigation.length >= 5) {
+      toast({
+        title: "Limit Reached",
+        description: "You can only have up to 5 navigation items at the top level.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const newItem: NavigationItem = {
       id: Date.now().toString(),
       name: 'New Item',
       href: '/new-page',
-      isSubmenu,
-      parentId,
+      isSubmenu: false,
     };
     setNavigation([...navigation, newItem]);
   };
 
   const removeNavigationItem = (id: string) => {
     setNavigation(navigation.filter(item => item.id !== id));
-    // Also remove submenus
-    setNavigation(prev => prev.filter(item => item.parentId !== id));
   };
 
   const updateNavigationItem = (id: string, updates: Partial<NavigationItem>) => {
@@ -432,9 +526,6 @@ export default function AdminSettings() {
       item.id === id ? { ...item, ...updates } : item
     ));
   };
-
-  const mainNavigation = navigation.filter(item => !item.isSubmenu);
-  const subNavigation = navigation.filter(item => item.isSubmenu);
 
   return (
     <div className="space-y-6">
@@ -710,7 +801,7 @@ export default function AdminSettings() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => addNavigationItem(false)}
+              onClick={() => addNavigationItem()}
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Item
@@ -718,71 +809,27 @@ export default function AdminSettings() {
           </div>
           
           <div className="space-y-4">
-            {mainNavigation.map((item) => (
-              <div key={item.id} className="flex items-center gap-2 p-3 border rounded-md">
-                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <Input
-                    value={item.name}
-                    onChange={(e) => updateNavigationItem(item.id, { name: e.target.value })}
-                    placeholder="Name"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={navigation.map(i => i.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {navigation.map((item) => (
+                  <SortableNavItem
+                    key={item.id}
+                    item={item}
+                    onUpdate={updateNavigationItem}
+                    onRemove={removeNavigationItem}
                   />
-                  <Input
-                    value={item.href}
-                    onChange={(e) => updateNavigationItem(item.id, { href: e.target.value })}
-                    placeholder="/path"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => addNavigationItem(true, item.id)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => removeNavigationItem(item.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                ))}
+              </SortableContext>
+            </DndContext>
           </div>
           
-          {subNavigation.length > 0 && (
-            <>
-              <Separator />
-              <div className="space-y-4">
-                <div className="text-sm text-muted-foreground mb-2">Submenu Items</div>
-                {subNavigation.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 p-3 border rounded-md ml-6">
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <Input
-                        value={item.name}
-                        onChange={(e) => updateNavigationItem(item.id, { name: e.target.value })}
-                        placeholder="Name"
-                      />
-                      <Input
-                        value={item.href}
-                        onChange={(e) => updateNavigationItem(item.id, { href: e.target.value })}
-                        placeholder="/path"
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeNavigationItem(item.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
     </div>
