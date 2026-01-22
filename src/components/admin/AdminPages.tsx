@@ -9,8 +9,10 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Edit, Trash2, Eye, Layout, Share2, Globe, User } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Plus, Edit, Trash2, Eye, Layout, Share2, Globe, User, Filter } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -106,10 +108,12 @@ export default function AdminPages() {
   const { mutate: publishEvent } = useNostrPublish();
   const { mutateAsync: uploadFile } = useUploadFile();
   const { toast } = useToast();
+  const { data: remoteNostrJson } = useRemoteNostrJson();
   
   const [isCreating, setIsCreating] = useState(false);
   const [editingPage, setEditingPage] = useState<StaticPage | null>(null);
   const [selectedRelays, setSelectedRelays] = useState<string[]>([]);
+  const [filterByNostrJson, setFilterByNostrJson] = useState(false);
   const [formData, setFormData] = useState({
     path: '',
     content: '',
@@ -121,7 +125,7 @@ export default function AdminPages() {
     }
   }, [initialPublishRelays, selectedRelays.length]);
 
-  const { data: pages, refetch } = useQuery({
+  const { data: allPages, refetch } = useQuery({
     queryKey: ['admin-static-pages'],
     staleTime: 0,
     gcTime: 0,
@@ -146,6 +150,16 @@ export default function AdminPages() {
       }).filter(p => p.path);
     },
   });
+
+  // Filter pages based on nostr.json users
+  const pages = filterByNostrJson && remoteNostrJson?.names
+    ? allPages?.filter(page => {
+        const normalizedPubkey = page.pubkey.toLowerCase().trim();
+        return Object.values(remoteNostrJson.names).some(
+          pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+        );
+      })
+    : allPages;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,6 +272,17 @@ export default function AdminPages() {
           <p className="text-xs text-muted-foreground mt-1">
             Showing pages from default relay only: <span className="font-mono">{import.meta.env.VITE_DEFAULT_RELAY}</span>
           </p>
+          <div className="flex items-center gap-2 mt-3">
+            <Switch
+              id="filter-nostr-json"
+              checked={filterByNostrJson}
+              onCheckedChange={setFilterByNostrJson}
+            />
+            <Label htmlFor="filter-nostr-json" className="text-sm cursor-pointer flex items-center gap-2">
+              <Filter className="h-3 w-3" />
+              Show only users from nostr.json
+            </Label>
+          </div>
         </div>
         <Button onClick={() => setIsCreating(true)} disabled={isCreating}>
           <Plus className="h-4 w-4 mr-2" />
