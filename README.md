@@ -9,56 +9,62 @@ A comprehensive meetup and event management system built with React, TypeScript,
 ## Features
 
 ### Admin Dashboard
-- **Authentication**: Remote nostr.json validation for admin access control
-- **Content Management**: Full CMS with TipTap rich text editor
-- **Blog Management**: Create, edit, and manage long-form content (NIP-23)
-- **Event Management**: Create and manage events with RSVP functionality (NIP-52)
-- **Draft Support**: Save drafts to default relay before publishing
-- **Site Configuration**: Customize logos, titles, favicons, and navigation
-- **Relay Management**: Configure default relay for content reading and publishing relays for content distribution
-- **Multi-Relay Publishing**: Content published to multiple relays automatically
+- **Authentication**: Remote `nostr.json` validation for admin access control.
+- **Admin Roles**: Support for **Primary** and **Secondary** admin roles with different publishing permissions.
+- **Content Management**: Full CMS with TipTap rich text editor for blogs and events.
+- **Static Pages**: Create and manage static HTML/Markdown pages via **Kind 34128** (nsite) with Blossom storage.
+- **Blog Management**: Create, edit, and manage long-form content (**NIP-23**) with username-based filtering.
+- **Event Management**: Create and manage events with RSVP functionality (**NIP-52**) and username-based filtering.
+- **Draft Support**: Save drafts to default relay before publishing.
+- **Site Configuration**: Customize logos, titles, favicons, and navigation menus.
+- **Relay Management**: Configure a **Primary Relay** (prioritized) and additional **Publishing Relays** for redundancy.
+- **Reset to Defaults**: Quickly reset all site settings to environment variable defaults and clear local caches.
 
 ### Public Website
-- **Hero Section**: Customizable hero with background image and text
-- **Event Listings**: Browse upcoming and past events with filtering
-- **Event Details**: Full event pages with RSVP functionality
-- **Blog Section**: Display published blog posts
-- **Navigation**: Customizable navigation menu with submenus
-- **Responsive Design**: Mobile-friendly interface
+- **Zaps & Tips**: Integrated support for **Lightning Zaps (NIP-57)** for community appreciation.
+- **NWC Integration**: Support for **Nostr Wallet Connect (NIP-47)** for seamless zapping.
+- **Hero Section**: Customizable hero with background image and text.
+- **Event Listings**: Browse upcoming and past events with filtering and author attribution.
+- **Event Details**: Full event pages with RSVP functionality and attendee lists.
+- **Blog Section**: Display published blog posts with rich formatting and author metadata.
+- **Navigation**: Customizable navigation menu with submenus and mobile-responsive labels.
+- **Responsive Design**: Mobile-friendly interface with light/dark mode support.
 
 ## Technical Stack
 
-- **React 18.x**: Modern React with hooks and concurrent features
-- **TypeScript**: Type-safe development
-- **Vite**: Fast build tool and development server
-- **TailwindCSS**: Utility-first CSS framework
-- **shadcn/ui**: High-quality UI components
-- **Nostrify**: Nostr protocol integration
-- **TipTap**: Rich text editor for content creation
-- **TanStack Query**: Data fetching and state management
-- **React Router**: Client-side routing
+- **React 18.x**: Modern React with hooks and concurrent features.
+- **TypeScript**: Type-safe development.
+- **Vite**: Fast build tool and development server.
+- **TailwindCSS & shadcn/ui**: Utility-first CSS and high-quality UI components.
+- **Nostrify**: Nostr protocol integration.
+- **TipTap**: Rich text editor for content creation.
+- **TanStack Query**: Data fetching and state management.
+- **Blossom**: Media and static content storage.
+- **WebLN**: Lightning Network integration for zaps.
 
 ## Configuration
 
 ### Relays
-- **Default Relay**: (configured via VITE_DEFAULT_RELAY)
-- **Publishing Relays**: 
-  - (VITE_DEFAULT_RELAY)
+- **Primary Relay**: Configured via `VITE_DEFAULT_RELAY`. This is the main source for reading and the first destination for publishing.
+- **Additional Publishing Relays**: 
   - `wss://relay.damus.io`
   - `wss://relay.primal.net` 
   - `wss://nos.lol`
-- **Admin Control**: Configure which relays to use for content distribution
+- **Admin Control**: Admins can dynamically add or remove publishing relays via the system settings.
 
 ### Admin Access
-Admin access is controlled by a remote nostr.json file (configured via VITE_REMOTE_NOSTR_JSON_URL).
+Admin access is controlled by a remote `nostr.json` file (configured via `VITE_REMOTE_NOSTR_JSON_URL`). The site automatically detects users and maps roles based on the Master Pubkey.
 
 ## NIPs Used
 
 - **NIP-01**: Basic protocol flow
 - **NIP-05**: Mapping Nostr keys to DNS-based identifiers
 - **NIP-23**: Long-form content for blog posts
+- **NIP-47**: Nostr Wallet Connect (NWC)
 - **NIP-52**: Calendar events for meetups
 - **NIP-25**: Event RSVP functionality
+- **NIP-57**: Lightning Zaps
+- **NIP-nsite (Type 34128)**: Static page mapping
 - **NIP-04/17**: Direct messaging support
 
 ## Project Structure
@@ -66,22 +72,22 @@ Admin access is controlled by a remote nostr.json file (configured via VITE_REMO
 ```
 src/
 ├── components/
-│   ├── admin/          # Admin dashboard components
-│   ├── ui/              # shadcn/ui components (48+ available)
+│   ├── admin/          # Admin dashboard components (Blogs, Events, Pages, Settings)
+│   ├── ui/              # shadcn/ui components
 │   └── ...            # Other shared components
-├── contexts/             # React contexts
-├── hooks/               # Custom hooks (useNostr, useAuthor, etc.)
+├── contexts/             # React contexts (App, DM, NWC, Wallet)
+├── hooks/               # Custom hooks (useNostr, useZaps, useAuthor, etc.)
 ├── pages/              # Page components
 │   ├── admin/          # Admin pages
 │   └── ...            # Public pages
-└── lib/                # Utility functions
+└── lib/                # Utility functions and shared logic
 ```
 
 ## Development
 
 ### Prerequisites
 - Node.js 18+
-- npm
+- npm or pnpm
 
 ### Installation
 ```bash
@@ -98,50 +104,33 @@ npm run dev
 npm run build
 ```
 
-### Testing
-```bash
-npm test
-```
+## Admin Features In-Depth
 
-## Admin Features
+### System Settings & Reset
+The **Admin Settings** page allows the Master User to:
+- Assign roles to other admins.
+- Configure site-wide branding and metadata.
+- Manage the relay list.
+- Use the **Reset to Defaults** feature to purge all custom configuration and return to the `VITE_` environment variable state.
 
-### Blog Management
-- Create and edit long-form content with rich text editor
-- Save drafts before publishing
-- Publish to multiple relays
-- Categorize with tags
+### Static Pages (Kind 34128)
+Admins can create custom URL paths (e.g., `/about`, `/contact`) and upload content (HTML/Markdown) to Blossom. These are mapped using Kind 34128 events, allowing the site to serve decentralized static content.
 
-### Event Management
-- Create date-based or time-based events
-- Set locations and descriptions
-- Manage event status (confirmed, tentative)
-- Upload event images
+## Public Features In-Depth
 
-### Site Configuration
-- Customize site title and logo
-- Configure hero section content
-- Manage navigation menu structure
-- Set favicon and Open Graph images
-
-## Public Features
-
-### Event RSVP
-- Users can RSVP to events (Going, Maybe, Can't Go)
-- View attendee lists
-- See event history and comments
-
-### Content Discovery
-- Browse upcoming and past events
-- Filter by date, location, or search
-- Read blog posts and articles
-
-## Note on Delegated Content Posting
-Please note that we have not yet implemented delegated content posting. Once this feature is available, the documentation will be updated accordingly.
+### Community Zapping
+Users can send Bitcoin via Lightning Network zaps to authors of blog posts and events. The site supports:
+- **WebLN**: Browser extensions like Alby.
+- **NWC**: Cross-device wallet connections.
+- **QR Codes**: Manual scanning for mobile or desktop wallets.
 
 ## Security
-- Admin access controlled by remote nostr.json
-- Content validation and sanitization
-- No private keys stored in application
+- Admin access is cryptographically verified based on the remote `nostr.json`.
+- Sensitve configurations are stored in environment variables.
+- No private keys are stored on the server; all signing happens via local clients or NWC.
 
 ## License
 This project is open source and available under the MIT License.
+
+## Note
+This project was vibe coded by bitkarrot as an experiment with antigravity.
