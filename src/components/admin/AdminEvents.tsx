@@ -8,8 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { useAuthor } from '@/hooks/useAuthor';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Edit, Trash2, Calendar, MapPin, Share2, Eye, Layout } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, MapPin, Share2, Eye, Layout, Search } from 'lucide-react';
 import { AuthorInfo } from '@/components/AuthorInfo';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
@@ -32,14 +34,95 @@ interface MeetupEvent {
   pubkey: string;
 }
 
+function EventCard({ event, user, usernameSearch, onEdit, onDelete }: {
+  event: MeetupEvent;
+  user: { pubkey: string } | null;
+  usernameSearch: string;
+  onEdit: (event: MeetupEvent) => void;
+  onDelete: (event: MeetupEvent) => void;
+}) {
+  const { data: author } = useAuthor(event.pubkey);
+  
+  // Filter by username search
+  if (usernameSearch.trim()) {
+    const username = author?.metadata?.name || author?.metadata?.display_name || '';
+    if (!username.toLowerCase().includes(usernameSearch.toLowerCase())) {
+      return null;
+    }
+  }
+
+  const isEventPast = event.end ? event.end * 1000 < Date.now() : event.start * 1000 < Date.now();
+
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">{event.title}</h3>
+              <Badge variant={isEventPast ? 'secondary' : 'default'}>
+                {isEventPast ? 'Past' : 'Upcoming'}
+              </Badge>
+              <Badge variant="outline">{event.status}</Badge>
+            </div>
+            
+            {event.summary && (
+              <p className="text-sm text-muted-foreground">{event.summary}</p>
+            )}
+            
+            <AuthorInfo pubkey={event.pubkey} className="flex items-center gap-2 my-2" />
+            
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {new Date(event.start * 1000).toLocaleDateString()}
+                {event.kind === 31923 && (
+                  <span>{new Date(event.start * 1000).toLocaleTimeString()}</span>
+                )}
+              </div>
+              {event.location && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {event.location}
+                </div>
+              )}
+            </div>
+            
+            {event.description && (
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {event.description.replace(/<[^>]*>/g, '').slice(0, 200)}...
+              </p>
+            )}
+          </div>
+          
+          <div className="flex gap-2 ml-4">
+            {user && event.pubkey === user.pubkey && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => onEdit(event)}>
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onDelete(event)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminEvents() {
   const { nostr, publishRelays: initialPublishRelays } = useDefaultRelay();
   const { user } = useCurrentUser();
   const { mutate: publishEvent } = useNostrPublish();
+  const { data: remoteNostrJson } = useRemoteNostrJson();
   const [isCreating, setIsCreating] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MeetupEvent | null>(null);
   const [eventType, setEventType] = useState<'date' | 'time'>('time');
   const [selectedRelays, setSelectedRelays] = useState<string[]>([]);
+  const [usernameSearch, setUsernameSearch] = useState('');
   const [formData, setFormData] = useState({
     title: '',
     summary: '',
@@ -61,7 +144,7 @@ export default function AdminEvents() {
   }, [initialPublishRelays, selectedRelays.length]);
 
   // Fetch events
-  const { data: events, refetch } = useQuery({
+  const { data: allEvents, refetch } = useQuery({
     queryKey: ['admin-events'],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
@@ -104,6 +187,9 @@ export default function AdminEvents() {
       });
     },
   });
+
+  // Note: We'll filter events client-side based on author metadata in the render
+  const events = allEvents;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -274,11 +360,22 @@ export default function AdminEvents() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold tracking-tight">Events</h2>
           <p className="text-muted-foreground">
             Manage meetup events and RSVPs.
           </p>
+          <div className="mt-3 max-w-sm">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by username..."
+                value={usernameSearch}
+                onChange={(e) => setUsernameSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
         </div>
         <Button onClick={() => setIsCreating(true)} disabled={isCreating}>
           <Plus className="h-4 w-4 mr-2" />
@@ -499,62 +596,14 @@ export default function AdminEvents() {
       {/* Events List */}
       <div className="space-y-4">
         {events?.map((event) => (
-          <Card key={event.id}>
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">{event.title}</h3>
-                    <Badge variant={isEventPast(event) ? 'secondary' : 'default'}>
-                      {isEventPast(event) ? 'Past' : 'Upcoming'}
-                    </Badge>
-                    <Badge variant="outline">{event.status}</Badge>
-                  </div>
-                  
-                  {event.summary && (
-                    <p className="text-sm text-muted-foreground">{event.summary}</p>
-                  )}
-                  
-                  <AuthorInfo pubkey={event.pubkey} className="flex items-center gap-2 my-2" />
-                  
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(event.start * 1000).toLocaleDateString()}
-                      {event.kind === 31923 && (
-                        <span>{new Date(event.start * 1000).toLocaleTimeString()}</span>
-                      )}
-                    </div>
-                    {event.location && (
-                      <div className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {event.location}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {event.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {event.description.replace(/<[^>]*>/g, '').slice(0, 200)}...
-                    </p>
-                  )}
-                </div>
-                
-                <div className="flex gap-2 ml-4">
-                  {user && event.pubkey === user.pubkey && (
-                    <>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(event)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(event)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <EventCard
+            key={event.id}
+            event={event}
+            user={user}
+            usernameSearch={usernameSearch}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
         ))}
         
         {(!events || events.length === 0) && (

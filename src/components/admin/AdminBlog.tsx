@@ -9,8 +9,9 @@ import { Badge } from '@/components/ui/badge';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Edit, Trash2, Eye, Layout, Share2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, Layout, Share2, Search } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthor } from '@/hooks/useAuthor';
 import ReactMarkdown from 'react-markdown';
@@ -65,13 +66,69 @@ function AuthorInfo({ pubkey }: { pubkey: string }) {
   );
 }
 
+function BlogPostCard({ post, user, usernameSearch, onEdit, onDelete }: {
+  post: BlogPost;
+  user: { pubkey: string } | null;
+  usernameSearch: string;
+  onEdit: (post: BlogPost) => void;
+  onDelete: (post: BlogPost) => void;
+}) {
+  const { data: author } = useAuthor(post.pubkey);
+  
+  // Filter by username search
+  if (usernameSearch.trim()) {
+    const username = author?.metadata?.name || author?.metadata?.display_name || '';
+    if (!username.toLowerCase().includes(usernameSearch.toLowerCase())) {
+      return null;
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-start justify-between">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">{post.title}</h3>
+              <Badge variant={post.published ? 'default' : 'secondary'}>
+                {post.published ? 'Published' : 'Draft'}
+              </Badge>
+            </div>
+            <AuthorInfo pubkey={post.pubkey} />
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {post.content.replace(/[*#>`]/g, '').slice(0, 200)}...
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Created: {new Date(post.created_at * 1000).toLocaleDateString()}
+            </p>
+          </div>
+          <div className="flex gap-2 ml-4">
+            {user && post.pubkey === user.pubkey && (
+              <>
+                <Button variant="ghost" size="sm" onClick={() => onEdit(post)}>
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => onDelete(post)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminBlog() {
   const { nostr, publishRelays: initialPublishRelays } = useDefaultRelay();
   const { user } = useCurrentUser();
   const { mutate: publishEvent } = useNostrPublish();
+  const { data: remoteNostrJson } = useRemoteNostrJson();
   const [isCreating, setIsCreating] = useState(false);
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
   const [selectedRelays, setSelectedRelays] = useState<string[]>([]);
+  const [usernameSearch, setUsernameSearch] = useState('');
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -86,7 +143,7 @@ export default function AdminBlog() {
   }, [initialPublishRelays, selectedRelays.length]);
 
   // Fetch blog posts
-  const { data: posts, refetch } = useQuery({
+  const { data: allPosts, refetch } = useQuery({
     queryKey: ['admin-blog-posts'],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
@@ -108,6 +165,11 @@ export default function AdminBlog() {
       });
     },
   });
+
+  // Note: We'll filter posts client-side based on author metadata in the render
+  // This is a simple approach - for better performance with many posts,
+  // consider using a separate component with useAuthor for each post
+  const posts = allPosts;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,11 +250,22 @@ export default function AdminBlog() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold tracking-tight">Blog Posts</h2>
           <p className="text-muted-foreground">
             Manage your blog posts and long-form content.
           </p>
+          <div className="mt-3 max-w-sm">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by username..."
+                value={usernameSearch}
+                onChange={(e) => setUsernameSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+          </div>
         </div>
         <Button onClick={() => setIsCreating(true)} disabled={isCreating}>
           <Plus className="h-4 w-4 mr-2" />
@@ -320,39 +393,14 @@ export default function AdminBlog() {
       {/* Posts List */}
       <div className="space-y-4">
         {posts?.map((post) => (
-          <Card key={post.id}>
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold">{post.title}</h3>
-                    <Badge variant={post.published ? 'default' : 'secondary'}>
-                      {post.published ? 'Published' : 'Draft'}
-                    </Badge>
-                  </div>
-                  <AuthorInfo pubkey={post.pubkey} />
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {post.content.replace(/[*#>`]/g, '').slice(0, 200)}...
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Created: {new Date(post.created_at * 1000).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex gap-2 ml-4">
-                  {user && post.pubkey === user.pubkey && (
-                    <>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(post)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(post)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <BlogPostCard
+            key={post.id}
+            post={post}
+            user={user}
+            usernameSearch={usernameSearch}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
         ))}
         
         {(!posts || posts.length === 0) && (
