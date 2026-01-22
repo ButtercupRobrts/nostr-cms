@@ -183,6 +183,9 @@ export default function AdminPages() {
           <p className="text-muted-foreground">
             Manage static site content mapped via NIP-nsite (kind 34128).
           </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Showing pages from default relay only: <span className="font-mono">{import.meta.env.VITE_DEFAULT_RELAY}</span>
+          </p>
         </div>
         <Button onClick={() => setIsCreating(true)} disabled={isCreating}>
           <Plus className="h-4 w-4 mr-2" />

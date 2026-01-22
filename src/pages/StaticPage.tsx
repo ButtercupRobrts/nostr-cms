@@ -30,15 +30,10 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
       ];
       
       console.log('StaticPage: Filters:', filters);
+      console.log('StaticPage: Querying default relay only');
       
-      // Try pool first
-      let events = await poolNostr.query(filters, { signal });
-      
-      // If pool returns nothing, try default relay explicitly
-      if (events.length === 0 && defaultRelay) {
-        console.log('StaticPage: No events in pool, trying default relay');
-        events = await defaultRelay.query(filters, { signal });
-      }
+      // Query only the default relay
+      const events = await defaultRelay.query(filters, { signal });
       
       console.log('StaticPage: Found events:', events);
       
@@ -54,7 +49,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
         .sort((a, b) => b.created_at - a.created_at)[0] || null;
     },
     enabled: !!fullPath,
-    staleTime: 30000, 
+    staleTime: 0,
     retry: 2,
   });
 
@@ -135,7 +130,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
         <main className="max-w-4xl mx-auto px-4 py-12 text-center">
           <h1 className="text-4xl font-bold mb-4">404</h1>
           <p className="text-muted-foreground mb-8">Page not found for path: {fullPath}</p>
-          <p className="text-muted-foreground mb-8">Tried pool and default relay, but no event found.</p>
+          <p className="text-muted-foreground mb-8">No event found on the default relay.</p>
           <Button onClick={() => refetch()} variant="outline">
             Try Again
           </Button>
