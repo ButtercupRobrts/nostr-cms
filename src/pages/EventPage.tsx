@@ -3,7 +3,7 @@ import { useSeoMeta } from '@unhead/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import Navigation from '@/components/Navigation';
 import EventRSVP from '@/components/EventRSVP';
 import { useQuery } from '@tanstack/react-query';
@@ -87,15 +87,7 @@ export default function EventPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen py-8">
-        <div className="max-w-4xl mx-auto px-4 space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-64 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      </div>
-    );
+    return <PageLoadingIndicator />;
   }
 
   if (!event) {

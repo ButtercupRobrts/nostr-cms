@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useQuery } from '@tanstack/react-query';
@@ -374,28 +374,7 @@ const Index = () => {
   });
 
   if (eventsLoading || postsLoading) {
-    return (
-      <div className="min-h-screen">
-        <HeroSection />
-        <div className="py-16">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-20" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <PageLoadingIndicator />;
   }
 
   return (

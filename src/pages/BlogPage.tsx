@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useAppContext } from '@/hooks/useAppContext';
@@ -78,29 +78,7 @@ export default function BlogPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <Navigation />
-        <div className="py-8">
-          <div className="max-w-4xl mx-auto px-4 space-y-6">
-            <div className="h-8 bg-muted rounded animate-pulse mb-6" />
-            <div className="grid grid-cols-1 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <Card key={i}>
-                  <CardHeader>
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-20" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <PageLoadingIndicator />;
   }
 
   return (

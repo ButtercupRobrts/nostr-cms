@@ -2,8 +2,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import Navigation from '@/components/Navigation';
+import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, ArrowLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -55,21 +55,7 @@ export default function BlogPostPage() {
   });
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen">
-        <Navigation />
-        <div className="max-w-3xl mx-auto px-4 py-8">
-          <Skeleton className="h-8 w-3/4 mb-4" />
-          <Skeleton className="h-4 w-1/4 mb-8" />
-          <Skeleton className="h-64 w-full mb-8" />
-          <div className="space-y-4">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-          </div>
-        </div>
-      </div>
-    );
+    return <PageLoadingIndicator />;
   }
 
   if (!post) {

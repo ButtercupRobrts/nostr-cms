@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { Button } from '@/components/ui/button';
 import Navigation from '@/components/Navigation';
 import { useAppContext } from '@/hooks/useAppContext';
@@ -124,19 +124,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
   }, [pageEvent]);
 
   if (isEventLoading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
-        <main className="max-w-4xl mx-auto px-4 py-12">
-          <Skeleton className="h-12 w-3/4 mb-6" />
-          <div className="space-y-4">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
-          </div>
-        </main>
-      </div>
-    );
+    return <PageLoadingIndicator />;
   }
 
   if (!pageEvent && !isEventLoading) {
