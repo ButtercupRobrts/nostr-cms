@@ -130,20 +130,22 @@ export default function AdminZaplytics() {
                   customRange={customRange}
                   isLoading={isLoading} 
                 />
-                <TopContentTable 
-                  data={analytics?.topContent || []}
-                  isLoading={isLoading}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                {analytics?.temporalPatterns && (
+                                {analytics?.temporalPatterns && (
                   <TemporalPatternsChart 
                     hourlyData={analytics.temporalPatterns.earningsByHour}
                     weeklyData={analytics.temporalPatterns.earningsByDayOfWeek}
                     isLoading={isLoading}
                   />
                 )}
+
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                <TopContentTable 
+                  data={analytics?.topContent || []}
+                  isLoading={isLoading}
+                />
+
                 {analytics?.zapperLoyalty && (
                   <ZapperLoyalty 
                     data={analytics.zapperLoyalty}
