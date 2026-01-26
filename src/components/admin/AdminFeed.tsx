@@ -188,7 +188,7 @@ export default function AdminFeed() {
             <div className="space-y-2">
               <Label>Add from Directory</Label>
               <CardDescription>
-                Select users from your community directory to add to the feed.
+                Select users from your community directory (nostr.json) to add to the feed.
               </CardDescription>
               <div className="flex gap-2">
                 <Select

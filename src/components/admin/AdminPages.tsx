@@ -12,6 +12,11 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import { Plus, Edit, Trash2, Eye, Layout, Share2, Globe, User, Filter } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -43,13 +48,38 @@ function PageCard({ page, user, onEdit, onDelete }: {
   const displayName = metadata?.name || metadata?.display_name || `${page.pubkey.slice(0, 8)}...`;
 
   return (
-    <Card>
+    <Card className="hover:bg-muted/30 transition-colors">
       <CardContent className="pt-6">
         <div className="flex items-start justify-between">
           <div className="space-y-2 flex-1">
             <div className="flex items-center gap-2">
               <Globe className="h-4 w-4 text-primary" />
-              <h3 className="text-lg font-semibold">{page.path}</h3>
+              <HoverCard openDelay={200}>
+                <HoverCardTrigger asChild>
+                  <h3 className="text-lg font-semibold cursor-help hover:text-primary transition-colors">
+                    {page.path}
+                  </h3>
+                </HoverCardTrigger>
+                <HoverCardContent className="w-[450px] max-h-[500px] overflow-auto p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <h4 className="font-semibold text-sm flex items-center gap-2">
+                        <Eye className="h-4 w-4" />
+                        Content Preview: {page.path}
+                      </h4>
+                      <Badge variant="outline" className="text-[10px]">Preview</Badge>
+                    </div>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]} 
+                        rehypePlugins={[rehypeRaw]}
+                      >
+                        {page.content}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
               <Badge variant="outline">Kind 34128</Badge>
             </div>
             <div className="flex items-center gap-2">
@@ -87,10 +117,16 @@ function PageCard({ page, user, onEdit, onDelete }: {
             </Button>
             {user && page.pubkey === user.pubkey && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => onEdit(page)}>
+                <Button variant="ghost" size="sm" onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(page);
+                }}>
                   <Edit className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(page)}>
+                <Button variant="ghost" size="sm" onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(page);
+                }}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </>
