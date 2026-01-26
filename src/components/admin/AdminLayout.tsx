@@ -17,7 +17,8 @@ import {
   X,
   Sun,
   Moon,
-  Shield
+  Shield,
+  Rss
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -33,6 +34,7 @@ export default function AdminLayout() {
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { name: 'Blog Posts', href: '/admin/blog', icon: FileText },
     { name: 'Events', href: '/admin/events', icon: Calendar },
+    { name: 'Feed', href: '/admin/feed', icon: Rss },
     { name: 'Pages', href: '/admin/pages', icon: FileCode },
     ...(isMasterUser ? [
       { name: 'Site Settings', href: '/admin/settings', icon: Settings },

@@ -31,6 +31,9 @@ interface SiteConfig {
   publishRelays: string[];
   adminRoles: Record<string, 'primary' | 'secondary'>;
   tweakcnThemeUrl?: string;
+  feedNpubs: string[];
+  feedReadFromPublishRelays: boolean;
+  sectionOrder?: string[];
   updatedAt?: number;
 }
 
@@ -126,7 +129,9 @@ export default function AdminSystemSettings() {
       'wss://nos.lol'
     ].filter(Boolean),
     adminRoles: config.siteConfig?.adminRoles ?? {},
-    tweakcnThemeUrl: config.siteConfig?.tweakcnThemeUrl ?? '',
+    feedNpubs: config.siteConfig?.feedNpubs ?? [],
+    feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
+    sectionOrder: config.siteConfig?.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content', 'feed'],
   }));
 
   const { data: remoteNostrJson } = useRemoteNostrJson();
@@ -140,6 +145,9 @@ export default function AdminSystemSettings() {
         ...config.siteConfig,
         publishRelays: config.siteConfig?.publishRelays ?? prev.publishRelays,
         adminRoles: config.siteConfig?.adminRoles ?? prev.adminRoles,
+        feedNpubs: config.siteConfig?.feedNpubs ?? prev.feedNpubs,
+        feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? prev.feedReadFromPublishRelays,
+        sectionOrder: config.siteConfig?.sectionOrder ?? prev.sectionOrder,
       }) as SiteConfig);
     }
   }, [config.siteConfig, isSaving, isRefreshing, isMasterUser]);
@@ -191,7 +199,8 @@ export default function AdminSystemSettings() {
         Object.entries(tags).forEach(([key, tagName]) => {
           const val = eventTags.find(([name]) => name === tagName)?.[1];
           if (val !== undefined) {
-            (loadedConfig as Record<string, string | boolean | number | string[] | Record<string, string> | undefined>)[key] = val;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (loadedConfig as any)[key] = val;
           }
         });
 
@@ -210,6 +219,29 @@ export default function AdminSystemSettings() {
 
         const maxBlogPosts = eventTags.find(([name]) => name === 'max_blog_posts')?.[1];
         if (maxBlogPosts !== undefined) loadedConfig.maxBlogPosts = parseInt(maxBlogPosts);
+
+        const feedNpubsTag = eventTags.find(([name]) => name === 'feed_npubs')?.[1];
+        if (feedNpubsTag) {
+          try {
+            const parsed = JSON.parse(feedNpubsTag);
+            if (Array.isArray(parsed)) loadedConfig.feedNpubs = parsed as string[];
+          } catch (e) {
+            console.error('Failed to parse feed_npubs tag', e);
+          }
+        }
+
+        const feedReadTag = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
+        if (feedReadTag !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadTag === 'true';
+
+        const sectionOrderTag = eventTags.find(([name]) => name === 'section_order')?.[1];
+        if (sectionOrderTag) {
+          try {
+            const parsed = JSON.parse(sectionOrderTag);
+            if (Array.isArray(parsed)) loadedConfig.sectionOrder = parsed as string[];
+          } catch (e) {
+            console.error('Failed to parse section_order tag', e);
+          }
+        }
 
         const relaysTag = eventTags.find(([name]) => name === 'publish_relays')?.[1];
         if (relaysTag) {
@@ -275,7 +307,10 @@ export default function AdminSystemSettings() {
         ['default_relay', siteConfig.defaultRelay],
         ['publish_relays', JSON.stringify(filteredRelays)],
         ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
+        ['feed_npubs', JSON.stringify(siteConfig.feedNpubs)],
+        ['feed_read_from_publish_relays', siteConfig.feedReadFromPublishRelays.toString()],
         ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
+        ['section_order', JSON.stringify(siteConfig.sectionOrder || [])],
         ['updated_at', Math.floor(Date.now() / 1000).toString()],
       ];
 
@@ -347,7 +382,10 @@ export default function AdminSystemSettings() {
           ['default_relay', envDefaultRelay],
           ['publish_relays', JSON.stringify([envDefaultRelay])],
           ['admin_roles', JSON.stringify({})],
+          ['feed_npubs', JSON.stringify([])],
+          ['feed_read_from_publish_relays', 'false'],
           ['tweakcn_theme_url', ''],
+          ['section_order', JSON.stringify(['navigation', 'basic', 'styling', 'hero', 'content', 'feed'])],
           ['updated_at', Math.floor(Date.now() / 1000).toString()],
         ];
 
@@ -356,9 +394,9 @@ export default function AdminSystemSettings() {
             kind: 30078,
             content: JSON.stringify({ 
               navigation: [
-                { id: '1', name: 'Home', href: '/', isSubmenu: false },
                 { id: '2', name: 'Events', href: '/events', isSubmenu: false },
                 { id: '3', name: 'Blog', href: '/blog', isSubmenu: false },
+                { id: '6', name: 'Feed', href: '/feed', isSubmenu: false },
                 { id: '4', name: 'About', href: '/about', isSubmenu: false },
                 { id: '5', name: 'Contact', href: '/contact', isSubmenu: false },
               ]

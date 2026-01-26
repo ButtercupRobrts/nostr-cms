@@ -17,8 +17,9 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle, UserPlus } from 'lucide-react';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { cn, formatPubkey } from '@/lib/utils';
 import { useToast } from '@/hooks/useToast';
 import {
   DndContext,
@@ -57,6 +58,8 @@ interface SiteConfig {
   heroBackground: string;
   showEvents: boolean;
   showBlog: boolean;
+  feedNpubs: string[];
+  feedReadFromPublishRelays: boolean;
   maxEvents: number;
   maxBlogPosts: number;
   defaultRelay: string;
@@ -236,14 +239,17 @@ export default function AdminSettings() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previewThemeUrl, setPreviewThemeUrl] = useState<string | null>(null);
 
+  const { data: remoteNostrJson } = useRemoteNostrJson();
+  const [newNpub, setNewNpub] = useState('');
+
   const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
 
   const [navigation, setNavigation] = useState<NavigationItem[]>(() =>
     config.navigation ?? [
-      { id: '1', name: 'Home', href: '/', isSubmenu: false },
       { id: '2', name: 'Events', href: '/events', isSubmenu: false },
       { id: '3', name: 'Blog', href: '/blog', isSubmenu: false },
+      { id: '6', name: 'Feed', href: '/feed', isSubmenu: false },
       { id: '4', name: 'About', href: '/about', isSubmenu: false },
       { id: '5', name: 'Contact', href: '/contact', isSubmenu: false },
     ]
@@ -259,6 +265,8 @@ export default function AdminSettings() {
     heroBackground: config.siteConfig?.heroBackground ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop',
     showEvents: config.siteConfig?.showEvents ?? true,
     showBlog: config.siteConfig?.showBlog ?? true,
+    feedNpubs: config.siteConfig?.feedNpubs ?? [],
+    feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
     maxEvents: config.siteConfig?.maxEvents ?? 6,
     maxBlogPosts: config.siteConfig?.maxBlogPosts ?? 3,
     defaultRelay: config.siteConfig?.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY,
@@ -270,7 +278,7 @@ export default function AdminSettings() {
     ].filter(Boolean),
     adminRoles: config.siteConfig?.adminRoles ?? {},
     tweakcnThemeUrl: config.siteConfig?.tweakcnThemeUrl ?? '',
-    sectionOrder: config.siteConfig?.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content'],
+    sectionOrder: config.siteConfig?.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content', 'feed'],
   }));
 
   const isDirty = useMemo(() => {
@@ -285,16 +293,18 @@ export default function AdminSettings() {
       siteConfig.heroBackground !== (originalConfig.heroBackground ?? 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&h=1080&fit=crop') ||
       siteConfig.showEvents !== (originalConfig.showEvents ?? true) ||
       siteConfig.showBlog !== (originalConfig.showBlog ?? true) ||
+      JSON.stringify(siteConfig.feedNpubs) !== JSON.stringify(originalConfig.feedNpubs ?? []) ||
+      siteConfig.feedReadFromPublishRelays !== (originalConfig.feedReadFromPublishRelays ?? false) ||
       siteConfig.maxEvents !== (originalConfig.maxEvents ?? 6) ||
       siteConfig.maxBlogPosts !== (originalConfig.maxBlogPosts ?? 3) ||
       siteConfig.defaultRelay !== (originalConfig.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY) ||
       siteConfig.tweakcnThemeUrl !== (originalConfig.tweakcnThemeUrl ?? '') ||
-      JSON.stringify(siteConfig.sectionOrder) !== JSON.stringify(originalConfig.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content']);
+      JSON.stringify(siteConfig.sectionOrder) !== JSON.stringify(originalConfig.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content', 'feed']);
 
     const hasNavChanged = JSON.stringify(navigation) !== JSON.stringify(config.navigation || [
-      { id: '1', name: 'Home', href: '/', isSubmenu: false },
       { id: '2', name: 'Events', href: '/events', isSubmenu: false },
       { id: '3', name: 'Blog', href: '/blog', isSubmenu: false },
+      { id: '6', name: 'Feed', href: '/feed', isSubmenu: false },
       { id: '4', name: 'About', href: '/about', isSubmenu: false },
       { id: '5', name: 'Contact', href: '/contact', isSubmenu: false },
     ]);
@@ -535,6 +545,19 @@ export default function AdminSettings() {
           }
         }
 
+        const feedNpubsTag = eventTags.find(([name]) => name === 'feed_npubs')?.[1];
+        if (feedNpubsTag) {
+          try {
+            const parsed = JSON.parse(feedNpubsTag);
+            if (Array.isArray(parsed)) loadedConfig.feedNpubs = parsed;
+          } catch (e) {
+            console.error('Failed to parse feed_npubs tag', e);
+          }
+        }
+
+        const feedReadFromPublishRelays = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
+        if (feedReadFromPublishRelays !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadFromPublishRelays === 'true';
+
         // Also load navigation from content
         let loadedNavigation: NavigationItem[] = [];
         try {
@@ -598,6 +621,8 @@ export default function AdminSettings() {
         ['default_relay', siteConfig.defaultRelay],
         ['publish_relays', JSON.stringify(filteredRelays)],
         ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
+        ['feed_npubs', JSON.stringify(siteConfig.feedNpubs)],
+        ['feed_read_from_publish_relays', siteConfig.feedReadFromPublishRelays.toString()],
         ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
         ['section_order', JSON.stringify(siteConfig.sectionOrder)],
         ['updated_at', Math.floor(Date.now() / 1000).toString()],
@@ -680,11 +705,11 @@ export default function AdminSettings() {
         onDragEnd={handleSectionDragEnd}
       >
         <SortableContext
-          items={siteConfig.sectionOrder || ['navigation', 'basic', 'styling', 'hero', 'content']}
+          items={siteConfig.sectionOrder || ['navigation', 'basic', 'styling', 'hero', 'content', 'feed']}
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-6">
-            {(siteConfig.sectionOrder || ['navigation', 'basic', 'styling', 'hero', 'content']).map((sectionId) => {
+            {(siteConfig.sectionOrder || ['navigation', 'basic', 'styling', 'hero', 'content', 'feed']).map((sectionId) => {
               switch (sectionId) {
                 case 'basic':
                   return (
@@ -921,6 +946,128 @@ export default function AdminSettings() {
                               max="20"
                             />
                           </div>
+                        </div>
+                      </CardContent>
+                    </SortableSection>
+                  );
+                case 'feed':
+                  return (
+                    <SortableSection key="feed" id="feed" title="Feed Settings">
+                      <CardContent className="space-y-6">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Add from Directory</Label>
+                            <CardDescription>
+                              Select users from your community directory to add to the feed.
+                            </CardDescription>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {remoteNostrJson?.names && Object.entries(remoteNostrJson.names).map(([name, pubkey]) => {
+                                const isAdded = siteConfig.feedNpubs.includes(pubkey);
+                                return (
+                                  <Button
+                                    key={pubkey}
+                                    variant="outline"
+                                    size="sm"
+                                    className="justify-start gap-2 h-auto py-2"
+                                    disabled={isAdded}
+                                    onClick={() => {
+                                      if (!isAdded) {
+                                        setSiteConfig(prev => ({
+                                          ...prev,
+                                          feedNpubs: [...prev.feedNpubs, pubkey]
+                                        }));
+                                      }
+                                    }}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                    <div className="flex flex-col items-start overflow-hidden text-left">
+                                      <span className="font-medium truncate w-full">{name}</span>
+                                      <span className="text-[10px] text-muted-foreground truncate w-full">{pubkey}</span>
+                                    </div>
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-2">
+                            <Label htmlFor="manualNpub">Add Manual npub</Label>
+                            <CardDescription>
+                              Add a specific Nostr public key (npub) to the feed sources.
+                            </CardDescription>
+                            <div className="flex gap-2">
+                              <Input
+                                id="manualNpub"
+                                value={newNpub}
+                                onChange={(e) => setNewNpub(e.target.value)}
+                                placeholder="npub1..."
+                                className="flex-1"
+                              />
+                              <Button 
+                                type="button"
+                                onClick={() => {
+                                  if (newNpub.trim()) {
+                                    setSiteConfig(prev => ({
+                                      ...prev,
+                                      feedNpubs: [...new Set([...prev.feedNpubs, newNpub.trim()])]
+                                    }));
+                                    setNewNpub('');
+                                  }
+                                }}
+                              >
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Add
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Current Feed Sources</Label>
+                            <div className="border rounded-md divide-y max-h-[300px] overflow-y-auto">
+                              {siteConfig.feedNpubs.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                  No feed sources added yet.
+                                </div>
+                              ) : (
+                                siteConfig.feedNpubs.map((npub) => (
+                                  <div key={npub} className="flex items-center justify-between p-3 bg-card/50">
+                                    <div className="flex flex-col overflow-hidden mr-2 text-left">
+                                      <span className="text-sm font-mono truncate">{formatPubkey(npub)}</span>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSiteConfig(prev => ({
+                                          ...prev,
+                                          feedNpubs: prev.feedNpubs.filter(n => n !== npub)
+                                        }));
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <Label>Read from Publishing Relays</Label>
+                            <CardDescription>
+                              If enabled, the feed will also fetch notes from the publishing relays defined below.
+                            </CardDescription>
+                          </div>
+                          <Switch
+                            checked={siteConfig.feedReadFromPublishRelays}
+                            onCheckedChange={(checked) => setSiteConfig(prev => ({ ...prev, feedReadFromPublishRelays: checked }))}
+                          />
                         </div>
                       </CardContent>
                     </SortableSection>

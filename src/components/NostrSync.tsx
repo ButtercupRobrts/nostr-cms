@@ -164,6 +164,19 @@ export function NostrSync() {
           const maxBlogPosts = eventTags.find(([name]) => name === 'max_blog_posts')?.[1];
           if (maxBlogPosts !== undefined) loadedConfig.maxBlogPosts = parseInt(maxBlogPosts);
 
+          const feedNpubsTag = eventTags.find(([name]) => name === 'feed_npubs')?.[1];
+          if (feedNpubsTag) {
+            try {
+              const parsed = JSON.parse(feedNpubsTag);
+              if (Array.isArray(parsed)) loadedConfig.feedNpubs = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse feed_npubs', e);
+            }
+          }
+
+          const feedReadTag = eventTags.find(([name]) => name === 'feed_read_from_publish_relays')?.[1];
+          if (feedReadTag !== undefined) loadedConfig.feedReadFromPublishRelays = feedReadTag === 'true';
+
           const relaysTag = eventTags.find(([name]) => name === 'publish_relays')?.[1];
           if (relaysTag) {
             try {
@@ -215,7 +228,7 @@ export function NostrSync() {
     };
 
     syncSiteConfigFromMaster();
-  }, [masterPubkey, nostr, updateConfig, config.siteConfig?.updatedAt]);
+  }, [masterPubkey, nostr, updateConfig, config.siteConfig?.updatedAt, config.siteConfig?.defaultRelay]);
 
   return null;
 }

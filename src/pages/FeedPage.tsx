@@ -1,0 +1,161 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useNostr } from '@nostrify/react';
+import { type NostrEvent } from '@nostrify/nostrify';
+import { useSeoMeta } from '@unhead/react';
+import { LayoutGrid, Rss, AlertCircle } from 'lucide-react';
+
+import { useAppContext } from '@/hooks/useAppContext';
+import Navigation from '@/components/Navigation';
+import { FeedItem } from '@/components/FeedItem';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+
+import { normalizeToHexPubkeys } from '@/lib/utils';
+
+export default function FeedPage() {
+  const { config } = useAppContext();
+  const { nostr } = useNostr();
+  
+  const siteConfig = config.siteConfig;
+  
+  const { feedNpubs, readFromPublishRelays, publishRelays } = useMemo(() => ({
+    feedNpubs: siteConfig?.feedNpubs || [],
+    readFromPublishRelays: siteConfig?.feedReadFromPublishRelays || false,
+    publishRelays: siteConfig?.publishRelays || []
+  }), [siteConfig?.feedNpubs, siteConfig?.feedReadFromPublishRelays, siteConfig?.publishRelays]);
+  
+  const pubkeys = useMemo(() => {
+    const pks = normalizeToHexPubkeys(feedNpubs);
+    console.log('[FeedPage] Normalized pubkeys:', pks, 'from feedNpubs:', feedNpubs);
+    return pks;
+  }, [feedNpubs]);
+  
+  const { data: notes = [], isLoading, error } = useQuery<NostrEvent[]>({
+    queryKey: ['feed-notes', pubkeys, readFromPublishRelays, publishRelays],
+    queryFn: async () => {
+      console.log('[FeedPage] queryFn triggered. Pubkeys:', pubkeys);
+      if (pubkeys.length === 0) return [];
+
+      const filter = {
+        kinds: [1],
+        authors: pubkeys,
+        limit: 50
+      };
+
+      const signal = AbortSignal.timeout(10000);
+      
+      let events: NostrEvent[] = [];
+      
+      try {
+        if (readFromPublishRelays && publishRelays.length > 0) {
+          console.log('[FeedPage] Querying publish relays:', publishRelays);
+          // Query both default relay and publish relays
+          const results = await Promise.allSettled(
+            publishRelays.map(url => {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const r = (nostr as any).relay(url);
+                return r.query([filter], { signal });
+              } catch (e) {
+                console.error(`[FeedPage] Error querying relay ${url}:`, e);
+                return Promise.resolve([]);
+              }
+            })
+          );
+          
+          const allEvents = results
+            .filter((r): r is PromiseFulfilledResult<NostrEvent[]> => r.status === 'fulfilled')
+            .flatMap(r => r.value);
+            
+          console.log(`[FeedPage] Total events found across all relays: ${allEvents.length}`);
+          // Deduplicate by ID
+          const uniqueEvents = Array.from(new Map(allEvents.map(e => [e.id, e])).values());
+          events = uniqueEvents;
+        } else {
+          console.log('[FeedPage] Querying default relay pool');
+          // Just query from the default relay (already in the pool)
+          events = await nostr.query([filter], { signal });
+        }
+        console.log(`[FeedPage] Final unique events count: ${events.length}`);
+      } catch (err) {
+        console.error('[FeedPage] Global query error:', err);
+        throw err;
+      }
+
+      return events.sort((a, b) => b.created_at - a.created_at);
+    },
+    enabled: pubkeys.length > 0,
+    staleTime: 60000, // 1 minute
+  });
+
+  useSeoMeta({
+    title: `Feed - ${config.siteConfig?.title || 'Community'}`,
+    description: "Stay updated with latest notes from our community.",
+  });
+
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <Navigation />
+      
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Feed</h1>
+            <p className="text-muted-foreground">
+              Latest updates from selected community members
+            </p>
+          </div>
+          <Rss className="h-8 w-8 text-primary opacity-50" />
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="h-40" />
+              </Card>
+            ))}
+          </div>
+        ) : error ? (
+          <Card className="border-destructive">
+            <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+              <AlertCircle className="h-12 w-12 text-destructive" />
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">Error loading feed</h3>
+                <p className="text-muted-foreground">There was a problem fetching the latest notes.</p>
+              </div>
+              <Button onClick={() => window.location.reload()}>Try Again</Button>
+            </CardContent>
+          </Card>
+        ) : pubkeys.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+              <LayoutGrid className="h-12 w-12 text-muted-foreground opacity-50" />
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">No feed sources configured</h3>
+                <p className="text-muted-foreground">The admin hasn't added any npubs to the feed yet.</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : notes.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
+              <Rss className="h-12 w-12 text-muted-foreground opacity-50" />
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">No notes found</h3>
+                <p className="text-muted-foreground">The configured users haven't posted any notes yet.</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {notes.map((note) => (
+              <FeedItem key={note.id} event={note} />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

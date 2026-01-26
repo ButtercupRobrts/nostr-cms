@@ -18,9 +18,9 @@ import {
 type NavigationItem = NonNullable<AppConfig['navigation']>[number];
 
 const defaultNavigation: NavigationItem[] = [
-  { id: 'home', name: 'Home', href: '/', isSubmenu: false },
   { id: 'events', name: 'Events', href: '/events', isSubmenu: false },
   { id: 'blog', name: 'Blog', href: '/blog', isSubmenu: false },
+  { id: 'feed', name: 'Feed', href: '/feed', isSubmenu: false },
   { id: 'about', name: 'About', href: '/about', isSubmenu: false },
   { id: 'contact', name: 'Contact', href: '/contact', isSubmenu: false },
 ];

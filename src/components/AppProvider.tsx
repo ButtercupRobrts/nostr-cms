@@ -43,6 +43,8 @@ const AppConfigSchema = z.object({
     adminRoles: z.record(z.string(), z.enum(['primary', 'secondary'])).optional(),
     tweakcnThemeUrl: z.string().optional(),
     sectionOrder: z.array(z.string()).optional(),
+    feedNpubs: z.array(z.string()).optional(),
+    feedReadFromPublishRelays: z.boolean().optional(),
     updatedAt: z.number().optional(),
   }).optional(),
   navigation: z.array(z.object({

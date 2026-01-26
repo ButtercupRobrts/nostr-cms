@@ -25,6 +25,8 @@ export interface AppConfig {
     heroBackground?: string;
     showEvents?: boolean;
     showBlog?: boolean;
+    feedNpubs?: string[];
+    feedReadFromPublishRelays?: boolean;
     maxEvents?: number;
     maxBlogPosts?: number;
     /** Default relay for reading content */
