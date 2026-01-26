@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { type NostrEvent } from '@nostrify/nostrify';
 import { nip19 } from 'nostr-tools';
-import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { 
   MessageSquare, 
@@ -56,6 +55,10 @@ export function FeedItem({ event, showActions = true }: FeedItemProps) {
   const displayName = metadata?.name || metadata?.display_name || genUserName(event.pubkey);
   const npub = useMemo(() => nip19.npubEncode(event.pubkey), [event.pubkey]);
   const timeAgo = formatDistanceToNow(new Date(event.created_at * 1000), { addSuffix: true });
+
+  const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
+  const cleanGateway = gateway.endsWith('/') ? gateway.slice(0, -1) : gateway;
+  const npubUrl = `${cleanGateway}/${npub}`;
 
   const handleReact = () => {
     if (!user) {
@@ -118,8 +121,6 @@ export function FeedItem({ event, showActions = true }: FeedItemProps) {
 
   const handleShare = () => {
     const noteId = nip19.noteEncode(event.id);
-    const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
-    const cleanGateway = gateway.endsWith('/') ? gateway.slice(0, -1) : gateway;
     const url = `${cleanGateway}/${noteId}`;
     navigator.clipboard.writeText(url);
     toast({
@@ -140,16 +141,16 @@ export function FeedItem({ event, showActions = true }: FeedItemProps) {
     <Card className="overflow-hidden border-none sm:border shadow-none sm:shadow-sm bg-card mb-4">
       <CardHeader className="p-4 flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center space-x-3">
-          <Link to={`/${npub}`}>
+          <a href={npubUrl} target="_blank" rel="noopener noreferrer">
             <Avatar className="h-10 w-10 border">
               <AvatarImage src={metadata?.picture} alt={displayName} />
               <AvatarFallback>{displayName.charAt(0).toUpperCase()}</AvatarFallback>
             </Avatar>
-          </Link>
+          </a>
           <div className="flex flex-col">
-            <Link to={`/${npub}`} className="font-bold hover:underline line-clamp-1">
+            <a href={npubUrl} target="_blank" rel="noopener noreferrer" className="font-bold hover:underline line-clamp-1">
               {displayName}
-            </Link>
+            </a>
             <div className="flex items-center text-xs text-muted-foreground space-x-1">
               <span>{timeAgo}</span>
             </div>

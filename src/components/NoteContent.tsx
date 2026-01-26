@@ -3,6 +3,7 @@ import { type NostrEvent } from '@nostrify/nostrify';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useAppContext } from '@/hooks/useAppContext';
 import { genUserName } from '@/lib/genUserName';
 import { cn } from '@/lib/utils';
 
@@ -11,11 +12,33 @@ interface NoteContentProps {
   className?: string;
 }
 
+function isImageUrl(url: string) {
+  try {
+    const normalized = url.split('#')[0]?.split('?')[0] ?? url;
+    return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(normalized);
+  } catch {
+    return false;
+  }
+}
+
+function isVideoUrl(url: string) {
+  try {
+    const normalized = url.split('#')[0]?.split('?')[0] ?? url;
+    return /\.(mp4|webm|ogg|mov)$/i.test(normalized);
+  } catch {
+    return false;
+  }
+}
+
 /** Parses content of text note events so that URLs and hashtags are linkified. */
 export function NoteContent({
   event, 
   className, 
 }: NoteContentProps) {  
+  const { config } = useAppContext();
+  const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
+  const cleanGateway = gateway.endsWith('/') ? gateway.slice(0, -1) : gateway;
+
   // Process the content to render mentions, links, etc.
   const content = useMemo(() => {
     const text = event.content;
@@ -39,17 +62,49 @@ export function NoteContent({
       
       if (url) {
         // Handle URLs
-        parts.push(
-          <a 
-            key={`url-${keyCounter++}`}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-500 hover:underline break-all"
-          >
-            {url}
-          </a>
-        );
+        if (isImageUrl(url)) {
+          parts.push(
+            <a
+              key={`img-${keyCounter++}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+            >
+              <img
+                src={url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="mt-2 max-w-full rounded-md border"
+              />
+            </a>
+          );
+        } else if (isVideoUrl(url)) {
+          parts.push(
+            <div key={`video-${keyCounter++}`} className="mt-2 max-w-full">
+              <video
+                src={url}
+                controls
+                playsInline
+                preload="metadata"
+                className="w-full rounded-md border"
+              />
+            </div>
+          );
+        } else {
+          parts.push(
+            <a 
+              key={`url-${keyCounter++}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:underline break-all"
+            >
+              {url}
+            </a>
+          );
+        }
       } else if (nostrPrefix && nostrData) {
         // Handle Nostr references
         try {
@@ -58,24 +113,42 @@ export function NoteContent({
           
           if (decoded.type === 'npub') {
             const pubkey = decoded.data;
+            const npub = nip19.npubEncode(pubkey);
             parts.push(
-              <NostrMention key={`mention-${keyCounter++}`} pubkey={pubkey} />
+              <a 
+                key={`mention-${keyCounter++}`} 
+                href={`${cleanGateway}/${npub}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <NostrMention pubkey={pubkey} />
+              </a>
             );
           } else if (decoded.type === 'nprofile') {
             const pubkey = decoded.data.pubkey;
+            const nprofile = nip19.nprofileEncode(decoded.data);
             parts.push(
-              <NostrMention key={`mention-${keyCounter++}`} pubkey={pubkey} />
+              <a 
+                key={`mention-${keyCounter++}`} 
+                href={`${cleanGateway}/${nprofile}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <NostrMention pubkey={pubkey} />
+              </a>
             );
           } else {
             // For other types, just show as a link
             parts.push(
-              <Link 
+              <a 
                 key={`nostr-${keyCounter++}`}
-                to={`/${nostrId}`}
+                href={`${cleanGateway}/${nostrId}`}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-blue-500 hover:underline break-all"
               >
                 {fullMatch}
-              </Link>
+              </a>
             );
           }
         } catch {
@@ -110,7 +183,7 @@ export function NoteContent({
     }
     
     return parts;
-  }, [event]);
+  }, [event, cleanGateway]);
 
   return (
     <div className={cn("whitespace-pre-wrap break-words", className)}>
@@ -122,13 +195,11 @@ export function NoteContent({
 // Helper component to display user mentions
 function NostrMention({ pubkey }: { pubkey: string }) {
   const author = useAuthor(pubkey);
-  const npub = nip19.npubEncode(pubkey);
   const hasRealName = !!author.data?.metadata?.name;
   const displayName = author.data?.metadata?.name ?? genUserName(pubkey);
 
   return (
-    <Link 
-      to={`/${npub}`}
+    <span 
       className={cn(
         "font-medium hover:underline",
         hasRealName 
@@ -137,6 +208,6 @@ function NostrMention({ pubkey }: { pubkey: string }) {
       )}
     >
       @{displayName}
-    </Link>
+    </span>
   );
 }
