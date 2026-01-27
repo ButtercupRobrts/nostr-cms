@@ -243,12 +243,17 @@ function BrowseMediaSection() {
     enabled: !!selectedRelay && !!user?.pubkey
   });
 
-  const filteredBlobs = useMemo(() => blobs?.filter(blob => {
-    if (mediaType === 'all') return true;
-    if (mediaType === 'image') return blob.type?.startsWith('image/');
-    if (mediaType === 'video') return blob.type?.startsWith('video/');
-    return true;
-  }) || [], [blobs, mediaType]);
+  const filteredBlobs = useMemo(() => {
+    const filtered = blobs?.filter(blob => {
+      if (mediaType === 'all') return true;
+      if (mediaType === 'image') return blob.type?.startsWith('image/');
+      if (mediaType === 'video') return blob.type?.startsWith('video/');
+      return true;
+    }) || [];
+    
+    // Sort by date (newest first)
+    return [...filtered].sort((a, b) => (b.uploaded || 0) - (a.uploaded || 0));
+  }, [blobs, mediaType]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -392,7 +397,7 @@ function BrowseMediaSection() {
                       {blob.uploaded ? new Date(blob.uploaded * 1000).toISOString().split('T')[0] : '-'}
                     </div>
                     <div className="w-12 text-right flex justify-end">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => copyToClipboard(blob.url)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" onClick={() => copyToClipboard(blob.url)}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
