@@ -15,6 +15,7 @@ import AdminZaplyticsPage from "./pages/admin/AdminZaplyticsPage";
 import AdminPagesPage from "./pages/admin/AdminPagesPage";
 import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
 import AdminSystemSettingsPage from "./pages/admin/AdminSystemSettingsPage";
+import AdminMediaPage from "./pages/admin/AdminMediaPage";
 import AdminLoginPage from "./pages/admin/AdminLoginPage";
 
 // Public pages
@@ -61,6 +62,7 @@ export function AppRouter() {
           <Route path="pages" element={<AdminPagesPage />} />
           <Route path="settings" element={<AdminSettingsPage />} />
           <Route path="system-settings" element={<AdminSystemSettingsPage />} />
+          <Route path="media" element={<AdminMediaPage />} />
         </Route>
         <Route path="/admin/login" element={<AdminLoginPage />} />
 

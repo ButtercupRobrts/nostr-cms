@@ -19,7 +19,8 @@ import {
   Moon,
   Shield,
   Rss,
-  Zap
+  Zap,
+  FileImage
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -37,6 +38,7 @@ export default function AdminLayout() {
     { name: 'Events', href: '/admin/events', icon: Calendar },
     { name: 'Feed', href: '/admin/feed', icon: Rss },
     { name: 'Zaplytics', href: '/admin/zaplytics', icon: Zap },
+    { name: 'Media', href: '/admin/media', icon: FileImage },
     { name: 'Pages', href: '/admin/pages', icon: FileCode },
     ...(isMasterUser ? [
       { name: 'Site Settings', href: '/admin/settings', icon: Settings },

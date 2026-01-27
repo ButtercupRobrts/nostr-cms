@@ -29,6 +29,7 @@ interface SiteConfig {
   maxBlogPosts: number;
   defaultRelay: string;
   publishRelays: string[];
+  blossomRelays: string[];
   adminRoles: Record<string, 'primary' | 'secondary'>;
   tweakcnThemeUrl?: string;
   feedNpubs: string[];
@@ -128,6 +129,10 @@ export default function AdminSystemSettings() {
       'wss://relay.primal.net',
       'wss://nos.lol'
     ].filter(Boolean),
+    blossomRelays: config.siteConfig?.blossomRelays ?? [
+      'https://blossom.primal.net',
+      'https://blossom.band'
+    ],
     adminRoles: config.siteConfig?.adminRoles ?? {},
     feedNpubs: config.siteConfig?.feedNpubs ?? [],
     feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
@@ -191,7 +196,8 @@ export default function AdminSystemSettings() {
           heroSubtitle: 'hero_subtitle',
           heroBackground: 'hero_background',
           defaultRelay: 'default_relay',
-          tweakcnThemeUrl: 'tweakcn_theme_url'
+          tweakcnThemeUrl: 'tweakcn_theme_url',
+          blossomRelays: 'blossom_relays'
         };
 
         const eventTags = event.tags || [];
@@ -253,6 +259,16 @@ export default function AdminSystemSettings() {
           }
         }
 
+        const blossomRelaysTag = eventTags.find(([name]) => name === 'blossom_relays')?.[1];
+        if (blossomRelaysTag) {
+          try {
+            const parsed = JSON.parse(blossomRelaysTag);
+            if (Array.isArray(parsed)) loadedConfig.blossomRelays = parsed;
+          } catch (e) {
+            console.error('Failed to parse blossom_relays tag', e);
+          }
+        }
+
         const adminRolesTag = eventTags.find(([name]) => name === 'admin_roles')?.[1];
         if (adminRolesTag) {
           try {
@@ -306,6 +322,7 @@ export default function AdminSystemSettings() {
         ['max_blog_posts', siteConfig.maxBlogPosts.toString()],
         ['default_relay', siteConfig.defaultRelay],
         ['publish_relays', JSON.stringify(filteredRelays)],
+        ['blossom_relays', JSON.stringify(siteConfig.blossomRelays)],
         ['admin_roles', JSON.stringify(siteConfig.adminRoles)],
         ['feed_npubs', JSON.stringify(siteConfig.feedNpubs)],
         ['feed_read_from_publish_relays', siteConfig.feedReadFromPublishRelays.toString()],
@@ -381,6 +398,7 @@ export default function AdminSystemSettings() {
           ['max_blog_posts', '3'],
           ['default_relay', envDefaultRelay],
           ['publish_relays', JSON.stringify([envDefaultRelay])],
+          ['blossom_relays', JSON.stringify(['https://blossom.primal.net', 'https://blossom.band'])],
           ['admin_roles', JSON.stringify({})],
           ['feed_npubs', JSON.stringify([])],
           ['feed_read_from_publish_relays', 'false'],

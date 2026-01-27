@@ -41,6 +41,8 @@ export interface AppConfig {
     sectionOrder?: string[];
     /** NIP-19 gateway URL (e.g. https://nostr.at or https://njump.me) */
     nip19Gateway?: string;
+    /** Blossom relays for media storage */
+    blossomRelays?: string[];
     /** Last time the site config was updated from/to Nostr */
     updatedAt?: number;
   };
