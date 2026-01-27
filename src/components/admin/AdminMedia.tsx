@@ -342,48 +342,64 @@ function BrowseMediaSection() {
                           Open
                         </a>
                       </Button>
-                      <div className="text-[10px] text-white/70 font-mono truncate w-full text-center">
-                        {(blob.size / 1024).toFixed(1)} KB
+                      <div className="text-[10px] text-white/70 font-mono space-y-1 text-center w-full">
+                        <div className="truncate px-1">{blob.sha256.slice(0, 12)}...</div>
+                        <div>{(blob.size / 1024).toFixed(1)} KB</div>
+                        {blob.uploaded && (
+                          <div>{new Date(blob.uploaded * 1000).toISOString().split('T')[0]}</div>
+                        )}
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="space-y-2">
+            ) : viewMode === 'list' ? (
+              <div className="space-y-1">
+                {/* Header for list view */}
+                <div className="flex items-center px-4 py-2 text-xs font-medium text-muted-foreground border-b mb-2">
+                  <div className="flex-1">Hash</div>
+                  <div className="w-24 text-right">Size</div>
+                  <div className="w-32 text-right">Date</div>
+                  <div className="w-12 text-right">Actions</div>
+                </div>
                 {filteredBlobs.map(blob => (
-                  <div key={blob.sha256} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="h-10 w-10 rounded border bg-muted flex-shrink-0 overflow-hidden">
+                  <div key={blob.sha256} className="flex items-center gap-4 px-4 py-2 hover:bg-muted/50 transition-colors rounded-md group">
+                    <div className="flex-1 flex items-center gap-3 overflow-hidden">
+                      <div className="h-6 w-6 rounded border bg-muted flex-shrink-0 overflow-hidden flex items-center justify-center">
                          {blob.type?.startsWith('image/') ? (
                           <img src={blob.url} alt="" className="h-full w-full object-cover" />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center">
-                            {blob.type?.startsWith('video/') ? <FileVideo className="h-4 w-4" /> : <FileImage className="h-4 w-4" />}
+                            {blob.type?.startsWith('video/') ? <FileVideo className="h-3 w-3" /> : <FileImage className="h-3 w-3" />}
                           </div>
                         )}
                       </div>
-                      <div className="overflow-hidden">
-                        <div className="text-sm font-mono truncate">{blob.sha256}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {blob.type} • {(blob.size / 1024 / 1024).toFixed(2)} MB
-                        </div>
-                      </div>
+                      <a 
+                        href={blob.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-sm font-mono text-primary hover:underline truncate"
+                      >
+                        {blob.sha256.slice(0, 16)}...
+                      </a>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(blob.url)}>
+                    <div className="w-24 text-right text-xs text-muted-foreground font-mono">
+                      {blob.size > 1024 * 1024 
+                        ? `${(blob.size / (1024 * 1024)).toFixed(1)} MB` 
+                        : `${(blob.size / 1024).toFixed(1)} KB`}
+                    </div>
+                    <div className="w-32 text-right text-xs text-muted-foreground font-mono">
+                      {blob.uploaded ? new Date(blob.uploaded * 1000).toISOString().split('T')[0] : '-'}
+                    </div>
+                    <div className="w-12 text-right flex justify-end">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-primary opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => copyToClipboard(blob.url)}>
                         <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                        <a href={blob.url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
                       </Button>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </Tabs>
         </CardContent>
       </Card>
