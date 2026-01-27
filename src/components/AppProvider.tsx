@@ -45,6 +45,7 @@ const AppConfigSchema = z.object({
     sectionOrder: z.array(z.string()).optional(),
     feedNpubs: z.array(z.string()).optional(),
     feedReadFromPublishRelays: z.boolean().optional(),
+    blossomRelays: z.array(z.string()).optional(),
     updatedAt: z.number().optional(),
   }).optional(),
   navigation: z.array(z.object({

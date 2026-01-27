@@ -51,20 +51,29 @@ function ManageServersSection() {
   const { toast } = useToast();
   const [newServer, setNewServer] = useState('');
   
+  // Stored relays from config
+  const storedBlossomRelays = useMemo(() => config.siteConfig?.blossomRelays || [], [config.siteConfig?.blossomRelays]);
+  
+  // Effective relays including derived default relay
   const blossomRelays = useMemo(() => {
-    const relays = [...(config.siteConfig?.blossomRelays || [])];
+    const relays = [...storedBlossomRelays];
     const defaultRelay = config.siteConfig?.defaultRelay;
     
-    // If default relay looks like a blossom relay (starts with http), add it if not present
-    if (defaultRelay && (defaultRelay.startsWith('http://') || defaultRelay.startsWith('https://'))) {
-      const normalizedDefault = defaultRelay.replace(/\/$/, '');
-      if (!relays.includes(normalizedDefault)) {
+    if (defaultRelay) {
+      let normalizedDefault = defaultRelay.replace(/\/$/, '');
+      if (normalizedDefault.startsWith('wss://')) {
+        normalizedDefault = normalizedDefault.replace('wss://', 'https://');
+      } else if (normalizedDefault.startsWith('ws://')) {
+        normalizedDefault = normalizedDefault.replace('ws://', 'http://');
+      }
+      
+      if ((normalizedDefault.startsWith('http://') || normalizedDefault.startsWith('https://')) && !relays.includes(normalizedDefault)) {
         relays.unshift(normalizedDefault);
       }
     }
     
     return relays;
-  }, [config.siteConfig?.blossomRelays, config.siteConfig?.defaultRelay]);
+  }, [storedBlossomRelays, config.siteConfig?.defaultRelay]);
 
   const handleAddServer = () => {
     if (!newServer) return;
@@ -85,7 +94,7 @@ function ManageServersSection() {
       ...prev,
       siteConfig: {
         ...prev.siteConfig,
-        blossomRelays: [...blossomRelays, url]
+        blossomRelays: [...storedBlossomRelays, url]
       }
     }));
     setNewServer('');
@@ -97,18 +106,30 @@ function ManageServersSection() {
       ...prev,
       siteConfig: {
         ...prev.siteConfig,
-        blossomRelays: blossomRelays.filter(r => r !== url)
+        blossomRelays: storedBlossomRelays.filter(r => r !== url)
       }
     }));
     toast({ title: "Success", description: "Server removed" });
   };
 
   const moveServer = (index: number, direction: 'up' | 'down') => {
-    const newRelays = [...blossomRelays];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= newRelays.length) return;
+    const newRelays = [...storedBlossomRelays];
+    // This is tricky because the UI shows blossomRelays (derived), but we update storedBlossomRelays
+    // If the item being moved is the derived one, we might need to handle it differently or just disable moving for derived items
+    const relayToMove = blossomRelays[index];
+    const isStored = storedBlossomRelays.includes(relayToMove);
     
-    [newRelays[index], newRelays[targetIndex]] = [newRelays[targetIndex], newRelays[index]];
+    if (!isStored) {
+      toast({ title: "Info", description: "Default relay position cannot be changed manually" });
+      return;
+    }
+
+    const storedIndex = storedBlossomRelays.indexOf(relayToMove);
+    const targetStoredIndex = direction === 'up' ? storedIndex - 1 : storedIndex + 1;
+    
+    if (targetStoredIndex < 0 || targetStoredIndex >= newRelays.length) return;
+    
+    [newRelays[storedIndex], newRelays[targetStoredIndex]] = [newRelays[targetStoredIndex], newRelays[storedIndex]];
     
     updateConfig((prev) => ({
       ...prev,
@@ -133,15 +154,16 @@ function ManageServersSection() {
                 <Server className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm font-medium truncate">{url}</span>
                 <Badge variant="secondary" className="text-[10px] uppercase">blossom</Badge>
+                {!storedBlossomRelays.includes(url) && <Badge variant="outline" className="text-[10px] uppercase">default</Badge>}
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveServer(index, 'up')} disabled={index === 0}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveServer(index, 'up')} disabled={index === 0 || !storedBlossomRelays.includes(url)}>
                   <ArrowUp className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveServer(index, 'down')} disabled={index === blossomRelays.length - 1}>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveServer(index, 'down')} disabled={index === blossomRelays.length - 1 || !storedBlossomRelays.includes(url)}>
                   <ArrowDown className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveServer(url)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemoveServer(url)} disabled={!storedBlossomRelays.includes(url)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
