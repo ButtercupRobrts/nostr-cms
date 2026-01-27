@@ -43,6 +43,12 @@ A comprehensive meetup or small organization and event management system built w
 - **Navigation**: Customizable navigation menu with submenus and mobile-responsive labels.
 - **Responsive Design**: Mobile-friendly interface with light/dark mode support.
 
+### AI Integration
+- **Shakespeare API**: Built-in `useShakespeare` hook for integrating AI chat completions.
+- **Streaming Support**: Support for streaming AI responses.
+- **Model Selection**: Dynamic model discovery and selection.
+- **Nostr Authentication**: Secure authentication with the AI provider using Nostr keys.
+
 ## Technical Stack
 
 - **React 18.x**: Modern React with hooks and concurrent features.
@@ -54,6 +60,7 @@ A comprehensive meetup or small organization and event management system built w
 - **TanStack Query**: Data fetching and state management.
 - **Blossom**: Media and static content storage.
 - **WebLN**: Lightning Network integration for zaps.
+- **Shakespeare AI**: AI chat completion API integration.
 
 ## Configuration
 
@@ -141,6 +148,15 @@ Users can send Bitcoin via Lightning Network zaps to authors of blog posts and e
 - Admin access is cryptographically verified based on the remote `nostr.json`.
 - Sensitve configurations are stored in environment variables.
 - No private keys are stored on the server; all signing happens via local clients or NWC.
+
+## Developer Documentation
+
+The project includes specialized documentation in the `docs/` directory:
+
+- **[AI Chat](docs/AI_CHAT.md)**: Implementation guide for AI chat interfaces using the Shakespeare API.
+- **[Nostr Direct Messages](docs/NOSTR_DIRECT_MESSAGES.md)**: Guide for implementing NIP-04 and NIP-17 direct messaging.
+- **[Nostr Comments](docs/NOSTR_COMMENTS.md)**: Guide for comment systems.
+- **[Infinite Scroll](docs/NOSTR_INFINITE_SCROLL.md)**: Guide for feed interfaces.
 
 ## License
 This project is open source and available under the MIT License.
