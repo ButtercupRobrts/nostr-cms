@@ -31,6 +31,7 @@ A comprehensive meetup or small organization and event management system built w
 - **Draft Support**: Save drafts to default relay before publishing.
 - **Site Configuration**: Customize logos, titles, favicons, and navigation menus.
 - **Relay Management**: Configure a **Primary Relay** (prioritized) and additional **Publishing Relays** for redundancy.
+- **Zaplytics**: Comprehensive analytics dashboard for tracking zap earnings, top contributors, and content performance.
 - **Reset to Defaults**: Quickly reset all site settings to environment variable defaults and clear local caches.
 
 ### Public Website
