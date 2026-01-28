@@ -32,7 +32,7 @@ const ZAP_FETCH_CONFIG = {
   INITIAL_BATCH_SIZE: 1000, // Start with larger batches to detect relay limits
   MIN_BATCH_SIZE: 250, // Minimum batch size when relay limits are hit
   MAX_BATCH_SIZE: 2000, // Maximum batch size to prevent timeouts
-  TIMEOUT_MS: 15000, // 15 second timeout per batch (reduced for better reliability)
+  TIMEOUT_MS: 8000, // Reduced from 15s for better responsiveness
   STALE_TIME: 60000, // 1 minute cache
   REFETCH_INTERVAL: 300000, // Refetch every 5 minutes
   BATCH_DELAY_MS: 300, // Delay between automatic batches (increased for rate limiting)
@@ -326,50 +326,24 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           : prev.relayLimit;
 
         // Determine if loading is complete
-        // For custom ranges: complete if we got no results (can't go further back)  
-        // For preset ranges: ONLY complete if we reached the time range boundary
         const expectedBatchSize = detectedLimit || batchSize;
         let isComplete = false;
 
         if (validReceipts.length === 0) {
-          // CRITICAL FIX: Don't mark complete just because we got 0 results
-          // Only mark complete if we've actually reached the time boundary
-          if (timeRange !== 'custom') {
-            const oldestInCache = currentState.allReceiptsCache.length > 0
-              ? Math.min(...currentState.allReceiptsCache.map(r => r.created_at))
-              : Date.now() / 1000;
-            // INCREASED boundary tolerance from 1 hour to 4 hours to handle larger gaps
-            const BOUNDARY_TOLERANCE_SECONDS = 14400; // 4 hours tolerance (was 3600)
-            const reachedTimeBoundary = oldestInCache <= (since + BOUNDARY_TOLERANCE_SECONDS);
-            isComplete = reachedTimeBoundary;
+          // If we got 0 results and we have a 'since' filter, there's nothing in this window
+          isComplete = !!since;
+        } else {
+          // If we got results, but fewer than the limit, we've exhausted the relay's data for this window
+          isComplete = validReceipts.length < expectedBatchSize;
 
-            console.log('Zero results completion check:', {
-              oldestInCache: oldestInCache > 0 ? new Date(oldestInCache * 1000).toISOString() : 'none',
-              timeRangeSince: new Date(since * 1000).toISOString(),
-              timeDifferenceMinutes: Math.round((oldestInCache - since) / 60),
-              reachedTimeBoundary,
-              finalIsComplete: isComplete,
-              toleranceUsed: !reachedTimeBoundary ? 'outside 4h tolerance' : 'within tolerance'
-            });
-          } else {
-            isComplete = true; // For custom ranges, 0 results = end
+          // Also check time boundary for safety with preset ranges
+          if (!isComplete && timeRange !== 'custom') {
+            const oldestNewReceipt = Math.min(...validReceipts.map(r => r.created_at));
+            const BOUNDARY_TOLERANCE_SECONDS = 3600; // 1 hour tolerance
+            if (oldestNewReceipt <= (since + BOUNDARY_TOLERANCE_SECONDS)) {
+              isComplete = true;
+            }
           }
-        } else if (timeRange !== 'custom') {
-          // For preset ranges with results, check the time boundary with increased tolerance
-          const oldestNewReceipt = Math.min(...validReceipts.map(r => r.created_at));
-          const BOUNDARY_TOLERANCE_SECONDS = 14400; // 4 hours tolerance (was 3600)
-          const reachedTimeBoundary = oldestNewReceipt <= (since + BOUNDARY_TOLERANCE_SECONDS);
-          isComplete = reachedTimeBoundary;
-
-          console.log('Completion check for preset range:', {
-            oldestNewReceipt: oldestNewReceipt > 0 ? new Date(oldestNewReceipt * 1000).toISOString() : 'none',
-            timeRangeSince: new Date(since * 1000).toISOString(),
-            timeDifferenceMinutes: Math.round((oldestNewReceipt - since) / 60),
-            reachedTimeBoundary,
-            validReceiptsLength: validReceipts.length,
-            expectedBatchSize,
-            finalIsComplete: isComplete
-          });
         }
 
         console.log('Updating state:', {

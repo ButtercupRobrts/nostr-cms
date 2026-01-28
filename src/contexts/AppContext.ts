@@ -48,6 +48,8 @@ export interface AppConfig {
     nip19Gateway?: string;
     /** Blossom relays for media storage */
     blossomRelays?: string[];
+    /** Order of zaplytics sections */
+    zaplyticsSectionOrder?: string[];
     /** Last time the site config was updated from/to Nostr */
     updatedAt?: number;
   };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,22 @@ import { ZapperLoyalty } from '@/components/zaplytics/ZapperLoyalty';
 import { ContentPerformance } from '@/components/zaplytics/ContentPerformance';
 import { HashtagAnalytics } from '@/components/zaplytics/HashtagAnalytics';
 import { ZapLoadingProgress } from '@/components/zaplytics/ZapLoadingProgress';
+import { DraggableCollapsibleCard } from '@/components/zaplytics/DraggableCollapsibleCard';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import type { TimeRange, CustomDateRange } from '@/types/zaplytics';
 
 function UserOption({ pubkey }: { pubkey: string }) {
@@ -38,13 +54,55 @@ function UserOption({ pubkey }: { pubkey: string }) {
 }
 
 export default function AdminZaplytics() {
-  const { config } = useAppContext();
+  const { config, updateConfig } = useAppContext();
   const feedNpubs = config.siteConfig?.feedNpubs || [];
 
   const [selectedPubkey, setSelectedPubkey] = useState<string>('');
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const [customRange, setCustomRange] = useState<CustomDateRange | undefined>();
   const [hasStarted, setHasStarted] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState<string[]>(() =>
+    config.siteConfig?.zaplyticsSectionOrder ?? [
+      'stats',
+      'earnings',
+      'patterns',
+      'content',
+      'loyalty',
+      'performance',
+      'hashtags'
+    ]
+  );
+
+  // Sync section order from config if it changes externally
+  useEffect(() => {
+    if (config.siteConfig?.zaplyticsSectionOrder) {
+      setSectionOrder(config.siteConfig.zaplyticsSectionOrder);
+    }
+  }, [config.siteConfig?.zaplyticsSectionOrder]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const newOrder = arrayMove(sectionOrder, sectionOrder.indexOf(active.id as string), sectionOrder.indexOf(over.id as string));
+      setSectionOrder(newOrder);
+
+      // Persist to local config
+      updateConfig((prev) => ({
+        ...prev,
+        siteConfig: {
+          ...prev.siteConfig,
+          zaplyticsSectionOrder: newOrder
+        }
+      }));
+    }
+  };
 
   const isCustomRangeIncomplete = timeRange === 'custom' && (!customRange?.from || !customRange?.to);
 
@@ -167,52 +225,128 @@ export default function AdminZaplytics() {
 
           {!isCustomRangeIncomplete && (
             <div className="space-y-8">
-              <StatsCards data={analytics} isLoading={isLoading} />
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <EarningsChart
-                  data={analytics?.earningsByPeriod || []}
-                  timeRange={timeRange}
-                  customRange={customRange}
-                  isLoading={isLoading}
-                />
-
-                {analytics?.temporalPatterns && (
-                  <TemporalPatternsChart
-                    hourlyData={analytics.temporalPatterns.earningsByHour}
-                    weeklyData={analytics.temporalPatterns.earningsByDayOfWeek}
-                    isLoading={isLoading}
-                  />
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <TopContentTable
-                  data={analytics?.topContent || []}
-                  isLoading={isLoading}
-                />
-
-                {analytics?.zapperLoyalty && (
-                  <ZapperLoyalty
-                    data={analytics.zapperLoyalty}
-                    isLoading={isLoading}
-                  />
-                )}
-              </div>
-
-              {analytics?.contentPerformance && analytics.contentPerformance.length > 0 && (
-                <ContentPerformance
-                  data={analytics.contentPerformance}
-                  isLoading={isLoading}
-                />
-              )}
-
-              {analytics?.hashtagPerformance && (
-                <HashtagAnalytics
-                  data={analytics.hashtagPerformance}
-                  isLoading={isLoading}
-                />
-              )}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={sectionOrder}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
+                    {sectionOrder.map((sectionId) => {
+                      switch (sectionId) {
+                        case 'stats':
+                          return (
+                            <DraggableCollapsibleCard
+                              key="stats"
+                              id="stats"
+                              title="Summary Metrics"
+                              description="Key performance indicators"
+                              className="xl:col-span-2"
+                            >
+                              <div className="p-6">
+                                <StatsCards data={analytics} isLoading={isLoading} />
+                              </div>
+                            </DraggableCollapsibleCard>
+                          );
+                        case 'earnings':
+                          return (
+                            <DraggableCollapsibleCard
+                              key="earnings"
+                              id="earnings"
+                              title="Earnings Over Time"
+                              description={`Showing earnings by ${timeRange === '24h' ? 'hour' : 'day'}`}
+                            >
+                              <EarningsChart
+                                data={analytics?.earningsByPeriod || []}
+                                timeRange={timeRange}
+                                customRange={customRange}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          );
+                        case 'patterns':
+                          return analytics?.temporalPatterns ? (
+                            <DraggableCollapsibleCard
+                              key="patterns"
+                              id="patterns"
+                              title="Activity Patterns"
+                              description="When zaps are typically received"
+                            >
+                              <TemporalPatternsChart
+                                hourlyData={analytics.temporalPatterns.earningsByHour}
+                                weeklyData={analytics.temporalPatterns.earningsByDayOfWeek}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          ) : null;
+                        case 'content':
+                          return (
+                            <DraggableCollapsibleCard
+                              key="content"
+                              id="content"
+                              title="Top Earning Content"
+                              description="Posts that generated the most sats"
+                            >
+                              <TopContentTable
+                                data={analytics?.topContent || []}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          );
+                        case 'loyalty':
+                          return analytics?.zapperLoyalty ? (
+                            <DraggableCollapsibleCard
+                              key="loyalty"
+                              id="loyalty"
+                              title="Supporter Loyalty"
+                              description="Your most consistent zappers"
+                            >
+                              <ZapperLoyalty
+                                data={analytics.zapperLoyalty}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          ) : null;
+                        case 'performance':
+                          return (
+                            <DraggableCollapsibleCard
+                              key="performance"
+                              id="performance"
+                              title="Content Performance"
+                              description="Detailed engagement metrics per post"
+                              className="xl:col-span-2"
+                            >
+                              <ContentPerformance
+                                data={analytics?.contentPerformance || []}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          );
+                        case 'hashtags':
+                          return (
+                            <DraggableCollapsibleCard
+                              key="hashtags"
+                              id="hashtags"
+                              title="Hashtag Performance"
+                              description="Analytics by hashtag"
+                              className="xl:col-span-2"
+                            >
+                              <HashtagAnalytics
+                                data={analytics?.hashtagPerformance || []}
+                                isLoading={isLoading}
+                              />
+                            </DraggableCollapsibleCard>
+                          );
+                        default:
+                          return null;
+                      }
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )}
         </div>
