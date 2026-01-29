@@ -540,6 +540,28 @@ export default function AdminEvents() {
                     }}
                     title="Select Event Image"
                   />
+
+                  {formData.image && (
+                    <div className="mt-4 relative group aspect-video w-full max-w-md overflow-hidden rounded-lg border bg-muted">
+                      <img
+                        src={formData.image}
+                        alt="Event preview"
+                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=Invalid+Image+URL';
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => setFormData(prev => ({ ...prev, image: '' }))}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
