@@ -584,6 +584,17 @@ export default function AdminSettings() {
           }
         }
 
+        // Check if relay from Nostr event differs from environment variable
+        // This mirrors the logic in NostrSync to ensure consistency
+        const envDefaultRelay = import.meta.env.VITE_DEFAULT_RELAY;
+        const relayFromEvent = loadedConfig.defaultRelay as string | undefined;
+
+        if (envDefaultRelay && relayFromEvent && envDefaultRelay !== relayFromEvent) {
+          console.log('[AdminSettings] Relay in Nostr event', relayFromEvent, 'differs from VITE_DEFAULT_RELAY', envDefaultRelay);
+          console.log('[AdminSettings] Prioritizing environment variable over relay data');
+          loadedConfig.defaultRelay = envDefaultRelay;
+        }
+
         const feedNpubsTag = eventTags.find(([name]) => name === 'feed_npubs')?.[1];
         if (feedNpubsTag) {
           try {
