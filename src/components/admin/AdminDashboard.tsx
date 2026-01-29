@@ -1,36 +1,45 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Calendar } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { FileText, Calendar, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import type { NostrFilter } from '@nostrify/nostrify';
+import { cn } from '@/lib/utils';
+import { useState } from 'react';
 
 export default function AdminDashboard() {
   const { nostr } = useDefaultRelay();
-
   const { user } = useCurrentUser();
-  const { data: blogPosts } = useQuery({
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { data: blogPosts, isLoading: isLoadingBlogs } = useQuery({
     queryKey: ['admin-blog-posts', user?.pubkey],
     queryFn: async () => {
-      const signal = AbortSignal.timeout(2000);
+      const signal = AbortSignal.timeout(5000);
       const filters: NostrFilter[] = [{ kinds: [30023], limit: 50 }];
-      
+
       if (user?.pubkey) {
-        filters.push({ kinds: [31234], authors: [user.pubkey], limit: 20 });
+        filters.push({ kinds: [31234], authors: [user.pubkey], '#k': ['30023'], limit: 20 });
       }
 
       const events = await nostr.query(filters, { signal });
-      return events;
+      // Defensive filter to ensure only kind 30023 or kind 31234 with k=30023 are included
+      return events.filter(event =>
+        event.kind === 30023 ||
+        (event.kind === 31234 && event.tags.some(([name, value]) => name === 'k' && value === '30023'))
+      );
     },
     enabled: !!nostr,
   });
 
   // Fetch events (kind 31922/31923 - Calendar events)
-  const { data: events } = useQuery({
+  const { data: events, isLoading: isLoadingEvents } = useQuery({
     queryKey: ['admin-events'],
     queryFn: async () => {
-      const signal = AbortSignal.timeout(2000);
+      const signal = AbortSignal.timeout(5000);
       const events = await nostr.query([
         { kinds: [31922, 31923], limit: 50 }
       ], { signal });
@@ -38,12 +47,21 @@ export default function AdminDashboard() {
     },
   });
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['admin-blog-posts'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-events'] }),
+    ]);
+    setTimeout(() => setIsRefreshing(false), 500); // Visual feedback
+  };
+
   const stats = [
     {
       title: 'Blog Posts',
       value: blogPosts?.length || 0,
       icon: FileText,
-      description: 'Published articles',
+      description: 'Published articles & drafts',
     },
     {
       title: 'Events',
@@ -55,11 +73,23 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-muted-foreground">
-          Welcome to your site admin panel. Here's an overview of your content.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-muted-foreground">
+            Welcome to your site admin panel. Here's an overview of your content.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing || isLoadingBlogs || isLoadingEvents}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats Grid */}
@@ -95,7 +125,7 @@ export default function AdminDashboard() {
                 const tags = post.tags || [];
                 let title = tags.find(([name]) => name === 'title')?.[1] || 'Untitled';
                 let published = tags.find(([name]) => name === 'published')?.[1] === 'true' || !tags.find(([name]) => name === 'published');
-                
+
                 if (post.kind === 31234) {
                   published = false;
                   title = '[Private Draft]';
@@ -143,7 +173,7 @@ export default function AdminDashboard() {
                 const title = tags.find(([name]) => name === 'title')?.[1] || 'Untitled Event';
                 const startTag = tags.find(([name]) => name === 'start')?.[1];
                 const status = tags.find(([name]) => name === 'status')?.[1] || 'confirmed';
-                
+
                 let dateDisplay = 'No date';
                 if (startTag) {
                   if (event.kind === 31922) {
@@ -154,7 +184,7 @@ export default function AdminDashboard() {
                     dateDisplay = new Date(parseInt(startTag) * 1000).toLocaleDateString();
                   }
                 }
-                
+
                 return (
                   <div key={event.id} className="flex items-center justify-between">
                     <div className="space-y-1">
