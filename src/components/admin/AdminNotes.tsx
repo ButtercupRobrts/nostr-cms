@@ -170,7 +170,6 @@ function NoteCard({
   gateway: string;
   onEdit: (note: Note) => void;
   onDelete: (note: Note) => void;
-  onPublish?: (note: Note) => void;
   engagementFilters?: { reactions: boolean, zaps: boolean, reposts: boolean, replies: boolean };
 }) {
   const stats = useNoteStats(note.id, note.pubkey);
@@ -259,11 +258,6 @@ function NoteCard({
             <div className="flex gap-1 flex-shrink-0">
               {user && note.pubkey === user.pubkey && (
                 <>
-                  {note.isDraft && onPublish && (
-                    <Button variant="default" size="icon" className="h-7 w-7" onClick={() => onPublish(note)} title="Publish">
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(note)} title="Edit">
                     <Edit className="h-4 w-4" />
                   </Button>
@@ -646,12 +640,6 @@ export default function AdminNotes() {
     window.scrollTo(0, 0);
   };
 
-  const handlePublishDraft = async (note: Note) => {
-    setEditingNote(note);
-    setContent(note.content);
-    setIsCreating(true);
-    window.scrollTo(0, 0);
-  };
 
   const notes = activeTab === 'drafts' ? draftNotes : publishedNotes;
 
@@ -919,7 +907,6 @@ export default function AdminNotes() {
                   gateway={gateway}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  onPublish={handlePublishDraft}
                 />
               ))}
               {(!draftNotes || draftNotes.length === 0) && (
