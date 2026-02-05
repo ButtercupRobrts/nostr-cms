@@ -510,22 +510,48 @@ interface ResponseViewerProps {
 }
 
 const ResponseViewer: React.FC<ResponseViewerProps> = ({ form }) => {
-  const { nostr } = useDefaultRelay();
+  const { nostr, poolNostr, defaultRelayUrl } = useDefaultRelay();
   const { toast } = useToast();
 
   const { data: responses, isLoading } = useQuery({
     queryKey: ['form-responses', form.id, form.eventId],
     queryFn: async () => {
-      // Query responses by both the specific event ID AND the stable form address (kind:pubkey:d-tag)
-      // This ensures responses aren't lost when the form definition is updated.
-      const signal = AbortSignal.timeout(5000);
+      const signal = AbortSignal.timeout(10000);
       const address = `30168:${form.pubkey}:${form.id}`;
-      const events = await nostr.query(
-        [{ kinds: [30169], '#e': [form.eventId] }, { kinds: [30169], '#a': [address] }],
-        { signal }
-      );
+      const filters = [{ kinds: [30169], '#e': [form.eventId] }, { kinds: [30169], '#a': [address] }];
 
-      return events.map(event => {
+      // Query multiple relays to improve reliability
+      const relaysToQuery = Array.from(new Set([
+        ...form.relays,
+        defaultRelayUrl
+      ])).filter(Boolean);
+
+      console.log(`[ResponseViewer] Querying responses for ${form.name} from relays:`, relaysToQuery);
+
+      const queryRelay = async (relayUrl: string) => {
+        try {
+          const r = (poolNostr as any).relay(relayUrl);
+          return await r.query(filters, { signal });
+        } catch (e) {
+          console.error(`[ResponseViewer] Error querying ${relayUrl}:`, e);
+          return [];
+        }
+      };
+
+      const results = await Promise.allSettled([
+        nostr.query(filters, { signal }),
+        ...relaysToQuery.map(url => queryRelay(url))
+      ]);
+
+      const allEvents = results
+        .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
+        .flatMap(r => r.value);
+
+      // Deduplicate by ID
+      const uniqueEvents = Array.from(new Map(allEvents.map(e => [e.id, e])).values());
+      console.log(`[ResponseViewer] Found ${uniqueEvents.length} total responses across all relays.`);
+
+      return uniqueEvents.map(event => {
         let answers = {};
         try {
           const content = JSON.parse(event.content);

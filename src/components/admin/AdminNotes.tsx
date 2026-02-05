@@ -18,7 +18,8 @@ import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useToast } from '@/hooks/useToast';
 import { useAuthor } from '@/hooks/useAuthor';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
+import { useInView } from 'react-intersection-observer';
 import { useNostr } from '@nostrify/react';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
 import type { NostrEvent as NostrifyEvent } from '@nostrify/nostrify';
@@ -365,14 +366,29 @@ export default function AdminNotes() {
     return relays;
   }, [config.siteConfig?.blossomRelays, config.siteConfig?.defaultRelay, config.siteConfig?.excludedBlossomRelays]);
 
-  // Fetch published notes (Kind 1) from the logged-in user
-  const { data: publishedNotes, refetch: refetchPublished } = useQuery({
+  const { ref: loadMoreRef, inView } = useInView();
+
+  // Fetch published notes (Kind 1) from the logged-in user with infinite scroll
+  const {
+    data: publishedNotesData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch: refetchPublished
+  } = useInfiniteQuery<Note[], Error, InfiniteData<Note[]>, any, number | undefined>({
     queryKey: ['admin-notes-published', user?.pubkey],
-    queryFn: async () => {
+    initialPageParam: undefined,
+    queryFn: async ({ pageParam }) => {
+      const until = pageParam;
       if (!user?.pubkey) return [];
       const signal = AbortSignal.timeout(5000);
       const events = await nostr.query([
-        { kinds: [1], authors: [user.pubkey], limit: 100 }
+        {
+          kinds: [1],
+          authors: [user.pubkey],
+          limit: 50,
+          until
+        }
       ], { signal });
 
       return events.map((event: NostrEvent) => ({
@@ -384,8 +400,23 @@ export default function AdminNotes() {
         isDraft: false,
       })).sort((a, b) => b.created_at - a.created_at);
     },
+    getNextPageParam: (lastPage) => {
+      if (lastPage.length < 50) return undefined;
+      return lastPage[lastPage.length - 1].created_at - 1;
+    },
     enabled: !!nostr && !!user?.pubkey,
   });
+
+  const publishedNotes = useMemo(() => {
+    return publishedNotesData?.pages.flat() || [];
+  }, [publishedNotesData]);
+
+  // Load more when scrolled to bottom
+  useEffect(() => {
+    if (inView && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Fetch draft notes (Kind 31234 with k=1) from the logged-in user
   const { data: draftNotes, refetch: refetchDrafts } = useQuery({
@@ -1126,6 +1157,28 @@ export default function AdminNotes() {
                   engagementFilters={engagementFilters}
                 />
               ))}
+
+              {/* Infinite scroll marker */}
+              {(publishedNotes && publishedNotes.length > 0) && (
+                <div ref={loadMoreRef} className="py-4 flex flex-col items-center justify-center gap-2">
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <p className="text-[10px] text-muted-foreground animate-pulse">Loading more notes...</p>
+                    </>
+                  ) : hasNextPage ? (
+                    <div className="h-1 w-24 bg-muted/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary/20 animate-shimmer" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 opacity-30">
+                      <div className="h-px w-8 bg-muted-foreground" />
+                      <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">End of Notes</p>
+                      <div className="h-px w-8 bg-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+              )}
               {(!publishedNotes || publishedNotes.length === 0) && (
                 <Card>
                   <CardContent className="pt-6 text-center">
