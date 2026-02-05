@@ -5,14 +5,14 @@
  * These values must be set in environment variables to enable scheduled posts.
  *
  * Required env vars:
- * - VITE_INSFORGE_BASE_URL - Your InsForge backend URL
- * - VITE_INSFORGE_ANON_KEY - Anonymous key for public access
+ * - INSFORGE_BASE_URL - Your InsForge backend URL
+ * - INSFORGE_ANON_KEY - Anonymous key for public access
  */
 
 import { createClient } from '@insforge/sdk';
 
-const INSFORGE_BASE_URL = import.meta.env.VITE_INSFORGE_BASE_URL || '';
-const INSFORGE_ANON_KEY = import.meta.env.VITE_INSFORGE_ANON_KEY || '';
+const INSFORGE_BASE_URL = import.meta.env.INSFORGE_BASE_URL || '';
+const INSFORGE_ANON_KEY = import.meta.env.INSFORGE_ANON_KEY || '';
 
 /**
  * Check if InsForge is properly configured

@@ -158,8 +158,8 @@ Add the InsForge credentials to your `.env` file:
 # ... existing variables ...
 
 # InsForge Backend (for scheduled posts feature)
-VITE_INSFORGE_BASE_URL=https://your-project.insforge.app
-VITE_INSFORGE_ANON_KEY=your_anon_key_here
+INSFORGE_BASE_URL=https://your-project.insforge.app
+INSFORGE_ANON_KEY=your_anon_key_here
 ```
 
 To get your anon key, you can use the InsForge MCP tool or dashboard:
@@ -191,10 +191,10 @@ After restarting your app:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `VITE_INSFORGE_BASE_URL` | InsForge backend URL | `https://your-project.insforge.app` |
-| `VITE_INSFORGE_ANON_KEY` | InsForge anonymous key | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
+| `INSFORGE_BASE_URL` | InsForge backend URL | `https://your-project.insforge.app` |
+| `INSFORGE_ANON_KEY` | InsForge anonymous key | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` |
 
-If `VITE_INSFORGE_BASE_URL` or `VITE_INSFORGE_ANON_KEY` are not set, the scheduled posts feature will be **hidden** and the app will function normally without it.
+If `INSFORGE_BASE_URL` or `INSFORGE_ANON_KEY` are not set, the scheduled posts feature will be **hidden** and the app will function normally without it.
 
 ---
 
@@ -229,7 +229,7 @@ npm run build
 
 ### Scheduled posts menu not appearing
 
-- Verify `VITE_INSFORGE_BASE_URL` and `VITE_INSFORGE_ANON_KEY` are set correctly
+- Verify `INSFORGE_BASE_URL` and `INSFORGE_ANON_KEY` are set correctly
 - Check browser console for authentication errors
 - Ensure the `scheduled_posts` table exists in your database
 
@@ -241,7 +241,7 @@ npm run build
 
 ### "JWSInvalidSignature" error
 
-- The `VITE_INSFORGE_ANON_KEY` may be incorrect
+- The `INSFORGE_ANON_KEY` may be incorrect
 - Regenerate the anon key from your InsForge dashboard
 
 ### Database connection errors

@@ -183,18 +183,18 @@ export default function AdminScheduledPage() {
       tags: event.tags || [],
       scheduledFor: post.scheduled_for,
       relays: post.relays,
+      title: '',
+      dTag: '',
+      summary: '',
+      image: '',
     };
 
     // Parse blog-specific data if applicable
     if (post.kind === 30023) {
-      const title = event.tags?.find(([name]) => name === 'title')?.[1] || '';
-      const dTag = event.tags?.find(([name]) => name === 'd')?.[1] || '';
-      const summary = event.tags?.find(([name]) => name === 'summary')?.[1] || '';
-      const image = event.tags?.find(([name]) => name === 'image')?.[1] || '';
-      editData.title = title;
-      editData.dTag = dTag;
-      editData.summary = summary;
-      editData.image = image;
+      editData.title = event.tags?.find(([name]) => name === 'title')?.[1] || '';
+      editData.dTag = event.tags?.find(([name]) => name === 'd')?.[1] || '';
+      editData.summary = event.tags?.find(([name]) => name === 'summary')?.[1] || '';
+      editData.image = event.tags?.find(([name]) => name === 'image')?.[1] || '';
     }
 
     // Navigate with state
@@ -216,8 +216,8 @@ export default function AdminScheduledPage() {
               To enable scheduled posts, configure the following environment variables:
             </p>
             <code className="block mt-2 text-xs bg-muted p-2 rounded text-left">
-              VITE_INSFORGE_BASE_URL=https://your-app.insforge.app<br />
-              VITE_INSFORGE_ANON_KEY=your-anon-key
+              INSFORGE_BASE_URL=https://your-app.insforge.app<br />
+              INSFORGE_ANON_KEY=your-anon-key
             </code>
           </div>
         </CardContent>
