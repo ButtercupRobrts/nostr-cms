@@ -83,11 +83,30 @@ import {
   CalendarDays,
   CircleDot,
   CheckSquare,
+  ArrowUp,
+  ArrowDown,
   Tag,
   Download,
   AlertCircle,
 } from 'lucide-react';
 import { nip19 } from 'nostr-tools';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { AuthorInfo } from '@/components/AuthorInfo';
 
 // Form field types supported by formstr
@@ -277,25 +296,62 @@ function FormCard({
               </div>
             )}
           </div>
-          <div className="flex flex-col gap-1 ml-4">
-            <Button variant="ghost" size="sm" onClick={() => onShare(form)} title="Share Form">
-              <Share2 className="h-4 w-4" />
+        </div>
+
+        {/* Form Actions at the bottom */}
+        <div className="mt-6 pt-4 border-t flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onShare(form)}
+            className="flex items-center gap-2"
+          >
+            <Share2 className="h-4 w-4 text-primary" />
+            <span>Share Form</span>
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onViewResponses(form)}
+            className="flex items-center gap-2"
+          >
+            <FileText className="h-4 w-4 text-primary" />
+            <span>View Responses</span>
+          </Button>
+
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onLinkPage(form)}
+              className="flex items-center gap-2"
+            >
+              <LinkIcon className="h-4 w-4" />
+              <span>Link to Page</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onViewResponses(form)} title="View Responses">
-              <FileText className="h-4 w-4" />
-            </Button>
-            {isAdmin && (
-              <Button variant="ghost" size="sm" onClick={() => onLinkPage(form)} title="Link to Page">
-                <LinkIcon className="h-4 w-4" />
-              </Button>
-            )}
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
             {isOwner && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => onEdit(form)} title="Edit Form">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onEdit(form)}
+                  className="flex items-center gap-2"
+                >
                   <Edit className="h-4 w-4" />
+                  <span>Edit</span>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(form)} title="Delete Form">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDelete(form)}
+                  className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
                   <Trash2 className="h-4 w-4" />
+                  <span>Delete</span>
                 </Button>
               </>
             )}
@@ -326,6 +382,23 @@ function FieldEditor({
   isFirst: boolean;
   isLast: boolean;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+    position: 'relative' as const,
+  };
+
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChoices = field.type === 'singleChoice' || field.type === 'multipleChoice';
 
@@ -355,23 +428,46 @@ function FieldEditor({
   };
 
   return (
-    <Card className="border-l-4 border-l-primary/50">
+    <Card ref={setNodeRef} style={style} className="border-l-4 border-l-primary/50">
       <CardContent className="pt-4">
         <div className="flex items-center gap-2 mb-4">
-          <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+          <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 -ml-1 rounded hover:bg-muted text-muted-foreground transition-colors">
+            <GripVertical className="h-4 w-4" />
+          </div>
           <Badge variant="outline">{index + 1}</Badge>
           <span className="font-medium truncate flex-1">{field.label || 'Untitled Field'}</span>
           <Badge variant="secondary">
             {FIELD_TYPES.find(t => t.value === field.type)?.label || field.type}
           </Badge>
-          <Button variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(!isExpanded)}
+            title={isExpanded ? "Collapse Field" : "Expand Field"}
+          >
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4 text-primary" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-primary" />
+            )}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onMoveUp} disabled={isFirst}>
-            <ChevronUp className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onMoveUp}
+            disabled={isFirst}
+            title="Move Up"
+          >
+            <ArrowUp className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={onMoveDown} disabled={isLast}>
-            <ChevronDown className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onMoveDown}
+            disabled={isLast}
+            title="Move Down"
+          >
+            <ArrowDown className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={onRemove}>
             <X className="h-4 w-4" />
@@ -895,6 +991,25 @@ export default function AdminForms() {
     setFormFields(updated);
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = formFields.findIndex((i) => i.id === active.id);
+      const newIndex = formFields.findIndex((i) => i.id === over.id);
+      const newFields = arrayMove(formFields, oldIndex, newIndex);
+      setFormFields(newFields);
+      // setIsDirty(true); // This is already handled by the general isDirty check
+    }
+  };
+
   // Remove a field
   const removeField = (index: number) => {
     setFormFields(formFields.filter((_, i) => i !== index));
@@ -1283,7 +1398,12 @@ export default function AdminForms() {
                     </CardDescription>
                   </div>
                   {!isSidebarOpen && (
-                    <Button variant="outline" size="sm" onClick={() => setIsSidebarOpen(true)}>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setIsSidebarOpen(true)}
+                      className="bg-primary hover:bg-primary/90 shadow-md animate-in fade-in zoom-in duration-300"
+                    >
                       <PanelRightOpen className="h-4 w-4 mr-2" />
                       Add Field
                     </Button>
@@ -1300,21 +1420,32 @@ export default function AdminForms() {
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {formFields.map((field, index) => (
-                        <FieldEditor
-                          key={field.id}
-                          field={field}
-                          index={index}
-                          onUpdate={(updated) => updateField(index, updated)}
-                          onRemove={() => removeField(index)}
-                          onMoveUp={() => moveFieldUp(index)}
-                          onMoveDown={() => moveFieldDown(index)}
-                          isFirst={index === 0}
-                          isLast={index === formFields.length - 1}
-                        />
-                      ))}
-                    </div>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={formFields.map(f => f.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-4">
+                          {formFields.map((field, index) => (
+                            <FieldEditor
+                              key={field.id}
+                              field={field}
+                              index={index}
+                              onUpdate={(updated) => updateField(index, updated)}
+                              onRemove={() => removeField(index)}
+                              onMoveUp={() => moveFieldUp(index)}
+                              onMoveDown={() => moveFieldDown(index)}
+                              isFirst={index === 0}
+                              isLast={index === formFields.length - 1}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                 </CardContent>
               </Card>
