@@ -1,19 +1,24 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FileText, Calendar, RefreshCw } from 'lucide-react';
+import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import type { NostrFilter } from '@nostrify/nostrify';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Link } from 'react-router-dom';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 export default function AdminDashboard() {
   const { nostr } = useDefaultRelay();
   const { user } = useCurrentUser();
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDismissed, setIsDismissed] = useLocalStorage('admin-dashboard-readme-dismissed', false);
+  const [isCollapsed, setIsCollapsed] = useLocalStorage('admin-dashboard-readme-collapsed', false);
 
   const { data: blogPosts, isLoading: isLoadingBlogs } = useQuery({
     queryKey: ['admin-blog-posts', user?.pubkey],
@@ -73,6 +78,50 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {!isDismissed && (
+        <Alert className="bg-orange-600 border-orange-700 text-white shadow-md relative pr-20">
+          <AlertTriangle className="h-5 w-5 !text-white" />
+          <div className="flex items-center justify-between w-full">
+            <AlertTitle className="text-lg font-bold ml-2">README FIRST</AlertTitle>
+            <div className="absolute top-4 right-4 flex gap-2">
+              <button
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="text-orange-100 hover:text-white transition-colors"
+                title={isCollapsed ? "Expand" : "Collapse"}
+              >
+                {isCollapsed ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
+              </button>
+              <button
+                onClick={() => setIsDismissed(true)}
+                className="text-orange-100 hover:text-white transition-colors"
+                title="Dismiss"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {!isCollapsed && (
+            <AlertDescription className="mt-2 text-orange-50 space-y-2">
+              <p>
+                This is <span className="font-bold">NOT a normal nostr client</span>, this is a CMS, a content manager system for an organization.
+                The default relay set is the single source of truth for all content on the public facing side of the site, visible by "View Site".
+                It does not function like a normal nostr client. The additional relays are there for broadcasting your notes, blogs, events to other relays.
+              </p>
+              <p>
+                Existing, previous content on other relays will not show up on here unless it exists on the default relay.
+                If you want to sync existing your content to the default relay, you can use the <Link to="/admin/sync-content" className="underline font-bold hover:text-white">Sync Content</Link> section.
+              </p>
+              <p>
+                User level access control is managed in <Link to="/admin/system-settings" className="underline font-bold hover:text-white">System Settings</Link>,
+                and different users have different publishing permissions. Please read them carefully in the <Link to="/admin/help" className="underline font-bold hover:text-white">Help</Link> section
+                .
+              </p>
+            </AlertDescription>
+          )}
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
@@ -80,16 +129,29 @@ export default function AdminDashboard() {
             Welcome to your site admin panel. Here's an overview of your content.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing || isLoadingBlogs || isLoadingEvents}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          {isDismissed && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDismissed(false)}
+              className="flex items-center gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+            >
+              <BookOpen className="h-4 w-4" />
+              Show Readme
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoadingBlogs || isLoadingEvents}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Grid */}
