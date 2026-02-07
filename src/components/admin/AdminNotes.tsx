@@ -19,6 +19,7 @@ import { useAppContext } from '@/hooks/useAppContext';
 import { useToast } from '@/hooks/useToast';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { useInView } from 'react-intersection-observer';
 import { useNostr } from '@nostrify/react';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
@@ -324,6 +325,8 @@ export default function AdminNotes() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { data: remoteNostrJson } = useRemoteNostrJson();
+  const [filterByNostrJson, setFilterByNostrJson] = useState(false);
   const [engagementFilters, setEngagementFilters] = useState({
     reactions: false,
     zaps: false,
@@ -810,7 +813,24 @@ export default function AdminNotes() {
   };
 
 
-  const notes = activeTab === 'drafts' ? draftNotes : publishedNotes;
+  // Filter notes based on nostr.json users
+  const filteredPublishedNotes = filterByNostrJson && remoteNostrJson?.names
+    ? publishedNotes?.filter(note => {
+      const normalizedPubkey = note.pubkey.toLowerCase().trim();
+      return Object.values(remoteNostrJson.names).some(
+        pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+      );
+    })
+    : publishedNotes;
+
+  const filteredDraftNotes = filterByNostrJson && remoteNostrJson?.names
+    ? draftNotes?.filter(note => {
+      const normalizedPubkey = note.pubkey.toLowerCase().trim();
+      return Object.values(remoteNostrJson.names).some(
+        pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+      );
+    })
+    : draftNotes;
 
   return (
     <div className="space-y-6">
@@ -1065,6 +1085,17 @@ export default function AdminNotes() {
               <p className="text-muted-foreground">
                 Create and manage your short-form notes (Kind 1).
               </p>
+              <div className="flex items-center gap-2 mt-3">
+                <Switch
+                  id="filter-nostr-json-notes"
+                  checked={filterByNostrJson}
+                  onCheckedChange={setFilterByNostrJson}
+                />
+                <Label htmlFor="filter-nostr-json-notes" className="text-sm cursor-pointer flex items-center gap-2">
+                  <Filter className="h-3 w-3" />
+                  Show only users from nostr.json
+                </Label>
+              </div>
             </div>
             <Button onClick={() => { setEditingNote(null); setContent(''); setScheduleConfig({ enabled: false, scheduledFor: null }); setIsCreating(true); }}>
               <Plus className="h-4 w-4 mr-2" />
@@ -1077,17 +1108,17 @@ export default function AdminNotes() {
               <TabsList className="grid w-fit grid-cols-2">
                 <TabsTrigger value="drafts">
                   Drafts
-                  {draftNotes && draftNotes.length > 0 && (
+                  {filteredDraftNotes && filteredDraftNotes.length > 0 && (
                     <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1 text-xs">
-                      {draftNotes.length}
+                      {filteredDraftNotes.length}
                     </Badge>
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="published">
                   Published
-                  {publishedNotes && publishedNotes.length > 0 && (
+                  {filteredPublishedNotes && filteredPublishedNotes.length > 0 && (
                     <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1 text-xs">
-                      {publishedNotes.length}
+                      {filteredPublishedNotes.length}
                     </Badge>
                   )}
                 </TabsTrigger>
@@ -1127,7 +1158,7 @@ export default function AdminNotes() {
             </div>
 
             <TabsContent value="drafts" className="mt-4 space-y-4">
-              {draftNotes?.map((note) => (
+              {filteredDraftNotes?.map((note) => (
                 <NoteCard
                   key={note.id}
                   note={note}
@@ -1137,7 +1168,7 @@ export default function AdminNotes() {
                   onDelete={handleDelete}
                 />
               ))}
-              {(!draftNotes || draftNotes.length === 0) && (
+              {(!filteredDraftNotes || filteredDraftNotes.length === 0) && (
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <p className="text-muted-foreground">No draft notes. Create a new note!</p>
@@ -1147,7 +1178,7 @@ export default function AdminNotes() {
             </TabsContent>
 
             <TabsContent value="published" className="mt-4 space-y-4">
-              {publishedNotes?.map((note) => (
+              {filteredPublishedNotes?.map((note) => (
                 <NoteCard
                   key={note.id}
                   note={note}
@@ -1160,7 +1191,7 @@ export default function AdminNotes() {
               ))}
 
               {/* Infinite scroll marker */}
-              {(publishedNotes && publishedNotes.length > 0) && (
+              {(filteredPublishedNotes && filteredPublishedNotes.length > 0) && (
                 <div ref={loadMoreRef} className="py-4 flex flex-col items-center justify-center gap-2">
                   {isFetchingNextPage ? (
                     <>
@@ -1180,7 +1211,7 @@ export default function AdminNotes() {
                   )}
                 </div>
               )}
-              {(!publishedNotes || publishedNotes.length === 0) && (
+              {(!filteredPublishedNotes || filteredPublishedNotes.length === 0) && (
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <p className="text-muted-foreground">No published notes yet.</p>

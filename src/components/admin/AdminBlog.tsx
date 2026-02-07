@@ -12,7 +12,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useToast } from '@/hooks/useToast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Edit, Trash2, Eye, Layout, Share2, Search, Image as ImageIcon, Library, Loader2, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, Layout, Share2, Search, Image as ImageIcon, Library, Loader2, Clock, Filter } from 'lucide-react';
 import { MediaSelectorDialog } from './MediaSelectorDialog';
 import { SchedulePicker } from './SchedulePicker';
 import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useScheduledPosts';
@@ -21,6 +21,7 @@ import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
 import { useAppContext } from '@/hooks/useAppContext';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import {
   Tooltip,
   TooltipContent,
@@ -147,11 +148,13 @@ export default function AdminBlog() {
   const { config } = useAppContext();
   const { mutateAsync: publishEvent } = useNostrPublish();
   const { toast } = useToast();
+  const { data: remoteNostrJson } = useRemoteNostrJson();
   const [isCreating, setIsCreating] = useState(false);
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
   const [editingScheduledPostId, setEditingScheduledPostId] = useState<string | null>(null);
   const [selectedRelays, setSelectedRelays] = useState<string[]>([]);
   const [usernameSearch, setUsernameSearch] = useState('');
+  const [filterByNostrJson, setFilterByNostrJson] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -410,10 +413,15 @@ export default function AdminBlog() {
     enabled: !!nostr,
   });
 
-  // Note: We'll filter posts client-side based on author metadata in the render
-  // This is a simple approach - for better performance with many posts,
-  // consider using a separate component with useAuthor for each post
-  const posts = allPosts;
+  // Filter posts based on nostr.json users
+  const posts = filterByNostrJson && remoteNostrJson?.names
+    ? allPosts?.filter(post => {
+      const normalizedPubkey = post.pubkey.toLowerCase().trim();
+      return Object.values(remoteNostrJson.names).some(
+        pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+      );
+    })
+    : allPosts;
 
   // Check if form is dirty
   const isDirty = editingPost
@@ -926,6 +934,17 @@ export default function AdminBlog() {
                     className="pl-8"
                   />
                 </div>
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <Switch
+                  id="filter-nostr-json-blog"
+                  checked={filterByNostrJson}
+                  onCheckedChange={setFilterByNostrJson}
+                />
+                <Label htmlFor="filter-nostr-json-blog" className="text-sm cursor-pointer flex items-center gap-2">
+                  <Filter className="h-3 w-3" />
+                  Show only users from nostr.json
+                </Label>
               </div>
             </div>
             <Button onClick={() => setIsCreating(true)}>

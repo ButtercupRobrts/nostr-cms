@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen, WifiOff } from 'lucide-react';
+import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen, WifiOff, Filter } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -11,6 +11,9 @@ import { useState } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Link } from 'react-router-dom';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 export default function AdminDashboard() {
   const { nostr } = useDefaultRelay();
@@ -19,6 +22,8 @@ export default function AdminDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDismissed, setIsDismissed] = useLocalStorage('admin-dashboard-readme-dismissed', false);
   const [isCollapsed, setIsCollapsed] = useLocalStorage('admin-dashboard-readme-collapsed', false);
+  const { data: remoteNostrJson } = useRemoteNostrJson();
+  const [filterByNostrJson, setFilterByNostrJson] = useState(false);
 
   const { data: blogPosts, isLoading: isLoadingBlogs, error: blogError } = useQuery({
     queryKey: ['admin-blog-posts', user?.pubkey],
@@ -65,16 +70,35 @@ export default function AdminDashboard() {
 
   const relayError = blogError || eventError;
 
+  // Filter data based on nostr.json users
+  const filteredBlogPosts = filterByNostrJson && remoteNostrJson?.names
+    ? blogPosts?.filter(post => {
+      const normalizedPubkey = post.pubkey.toLowerCase().trim();
+      return Object.values(remoteNostrJson.names).some(
+        pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+      );
+    })
+    : blogPosts;
+
+  const filteredEvents = filterByNostrJson && remoteNostrJson?.names
+    ? events?.filter(event => {
+      const normalizedPubkey = event.pubkey.toLowerCase().trim();
+      return Object.values(remoteNostrJson.names).some(
+        pubkey => pubkey.toLowerCase().trim() === normalizedPubkey
+      );
+    })
+    : events;
+
   const stats = [
     {
       title: 'Blog Posts',
-      value: blogPosts?.length || 0,
+      value: filteredBlogPosts?.length || 0,
       icon: FileText,
       description: 'Published articles & drafts',
     },
     {
       title: 'Events',
-      value: events?.length || 0,
+      value: filteredEvents?.length || 0,
       icon: Calendar,
       description: 'Scheduled meetups',
     },
@@ -151,6 +175,17 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">
             Welcome to your site admin panel. Here's an overview of your content.
           </p>
+          <div className="flex items-center gap-2 mt-3">
+            <Switch
+              id="filter-nostr-json-dashboard"
+              checked={filterByNostrJson}
+              onCheckedChange={setFilterByNostrJson}
+            />
+            <Label htmlFor="filter-nostr-json-dashboard" className="text-sm cursor-pointer flex items-center gap-2">
+              <Filter className="h-3 w-3" />
+              Show only users from nostr.json
+            </Label>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {isDismissed && (
@@ -206,7 +241,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {blogPosts?.slice(0, 5).map((post) => {
+              {filteredBlogPosts?.slice(0, 5).map((post) => {
                 const tags = post.tags || [];
                 let title = tags.find(([name]) => name === 'title')?.[1] || 'Untitled';
                 let published = tags.find(([name]) => name === 'published')?.[1] === 'true' || !tags.find(([name]) => name === 'published');
@@ -239,7 +274,7 @@ export default function AdminDashboard() {
                   </div>
                 );
               })}
-              {(!blogPosts || blogPosts.length === 0) && (
+              {(!filteredBlogPosts || filteredBlogPosts.length === 0) && (
                 <p className="text-sm text-muted-foreground">No blog posts yet.</p>
               )}
             </div>
@@ -253,7 +288,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {events?.slice(0, 5).map((event) => {
+              {filteredEvents?.slice(0, 5).map((event) => {
                 const tags = event.tags || [];
                 const title = tags.find(([name]) => name === 'title')?.[1] || 'Untitled Event';
                 const startTag = tags.find(([name]) => name === 'start')?.[1];
@@ -286,7 +321,7 @@ export default function AdminDashboard() {
                   </div>
                 );
               })}
-              {(!events || events.length === 0) && (
+              {(!filteredEvents || filteredEvents.length === 0) && (
                 <p className="text-sm text-muted-foreground">No events yet.</p>
               )}
             </div>
