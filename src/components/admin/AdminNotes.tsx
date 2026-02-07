@@ -42,7 +42,7 @@ import {
 import { MediaSelectorDialog } from './MediaSelectorDialog';
 import { SchedulePicker } from './SchedulePicker';
 import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useScheduledPosts';
-import { isSchedulerEnabled } from '@/lib/scheduler';
+import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
 import {
@@ -338,6 +338,7 @@ export default function AdminNotes() {
 
   const { mutateAsync: createScheduledPost, isPending: isScheduling } = useCreateScheduledPost();
   const { mutateAsync: updateScheduledPost } = useUpdateScheduledPost();
+  const { data: isSchedulerHealthy } = useSchedulerHealth();
 
   const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
 
@@ -859,7 +860,7 @@ export default function AdminNotes() {
               </Tabs>
 
               {/* Schedule Picker */}
-              {isSchedulerEnabled() && (
+              {isSchedulerHealthy && (
                 <SchedulePicker
                   value={scheduleConfig}
                   onChange={setScheduleConfig}

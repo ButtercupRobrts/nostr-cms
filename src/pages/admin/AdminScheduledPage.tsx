@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/useToast';
-import { isSchedulerEnabled } from '@/lib/scheduler';
+import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import {
   Clock,
   Calendar,
@@ -152,6 +152,7 @@ export default function AdminScheduledPage() {
   const { mutateAsync: deletePost } = useDeleteScheduledPost();
   const { mutateAsync: updatePost } = useUpdateScheduledPost();
   const [activeTab, setActiveTab] = useState<'pending' | 'published' | 'failed'>('pending');
+  const { data: isSchedulerHealthy, isLoading: isHealthLoading } = useSchedulerHealth();
 
   const handleDelete = async (id: string) => {
     if (!user?.pubkey) return;
@@ -205,7 +206,17 @@ export default function AdminScheduledPage() {
   const filteredPosts = scheduledPosts?.filter((post) => post.status === activeTab) || [];
 
   // Check if Scheduler is enabled
-  if (!isSchedulerEnabled()) {
+  if (isHealthLoading) {
+    return (
+      <Card>
+        <CardContent className="pt-6 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isSchedulerHealthy === false) {
     return (
       <Card>
         <CardContent className="pt-6 text-center space-y-4">

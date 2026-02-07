@@ -16,7 +16,7 @@ import { Plus, Edit, Trash2, Eye, Layout, Share2, Search, Image as ImageIcon, Li
 import { MediaSelectorDialog } from './MediaSelectorDialog';
 import { SchedulePicker } from './SchedulePicker';
 import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useScheduledPosts';
-import { isSchedulerEnabled } from '@/lib/scheduler';
+import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
@@ -168,6 +168,7 @@ export default function AdminBlog() {
 
   const { mutateAsync: createScheduledPost, isPending: isScheduling } = useCreateScheduledPost();
   const { mutateAsync: updateScheduledPost } = useUpdateScheduledPost();
+  const { data: isSchedulerHealthy } = useSchedulerHealth();
 
   // Derive blossom relays (same as AdminNotes)
   const blossomRelays = useMemo(() => {
@@ -842,7 +843,7 @@ export default function AdminBlog() {
                 </div>
 
                 {/* Schedule Picker */}
-                {isSchedulerEnabled() && (
+                {isSchedulerHealthy && (
                   <SchedulePicker
                     value={scheduleConfig}
                     onChange={setScheduleConfig}

@@ -8,6 +8,7 @@ import { LoginArea } from '@/components/auth/LoginArea';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
+import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import {
   LayoutDashboard,
   FileText,
@@ -42,6 +43,7 @@ export default function AdminLayout() {
   const { user } = useCurrentUser();
   const { config } = useAppContext();
   const { isAdmin } = useAdminAuth(user?.pubkey);
+  const { data: isSchedulerHealthy } = useSchedulerHealth();
 
   const toggleSidebar = () => {
     const newState = !isCollapsed;
@@ -58,7 +60,7 @@ export default function AdminLayout() {
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { name: 'Notes', href: '/admin/notes', icon: MessageCircle },
     { name: 'Blog Posts', href: '/admin/blog', icon: FileText },
-    { name: 'Scheduled', href: '/admin/scheduled', icon: Clock },
+    ...(isSchedulerHealthy ? [{ name: 'Scheduled', href: '/admin/scheduled', icon: Clock }] : []),
 
     { name: 'Events', href: '/admin/events', icon: Calendar },
     { name: 'Feed', href: '/admin/feed', icon: Rss },
