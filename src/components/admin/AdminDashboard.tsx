@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen } from 'lucide-react';
+import { FileText, Calendar, RefreshCw, AlertTriangle, ChevronDown, ChevronUp, X, BookOpen, WifiOff } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   const [isDismissed, setIsDismissed] = useLocalStorage('admin-dashboard-readme-dismissed', false);
   const [isCollapsed, setIsCollapsed] = useLocalStorage('admin-dashboard-readme-collapsed', false);
 
-  const { data: blogPosts, isLoading: isLoadingBlogs } = useQuery({
+  const { data: blogPosts, isLoading: isLoadingBlogs, error: blogError } = useQuery({
     queryKey: ['admin-blog-posts', user?.pubkey],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
@@ -41,7 +41,7 @@ export default function AdminDashboard() {
   });
 
   // Fetch events (kind 31922/31923 - Calendar events)
-  const { data: events, isLoading: isLoadingEvents } = useQuery({
+  const { data: events, isLoading: isLoadingEvents, error: eventError } = useQuery({
     queryKey: ['admin-events'],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
@@ -61,6 +61,8 @@ export default function AdminDashboard() {
     setTimeout(() => setIsRefreshing(false), 500); // Visual feedback
   };
 
+  const relayError = blogError || eventError;
+
   const stats = [
     {
       title: 'Blog Posts',
@@ -78,6 +80,25 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {relayError && (
+        <Alert className="border-destructive/50 bg-destructive/10">
+          <WifiOff className="h-5 w-5 text-destructive" />
+          <AlertTitle className="text-destructive font-semibold">Relay Disconnected</AlertTitle>
+          <AlertDescription className="text-muted-foreground">
+            Unable to connect to the default relay. Please make sure your relay is running and accessible.
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="ml-3 h-7"
+            >
+              <RefreshCw className={cn("h-3 w-3 mr-1", isRefreshing && "animate-spin")} />
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {!isDismissed && (
         <Alert className="bg-orange-600 border-orange-700 text-white shadow-md relative pr-20">
           <AlertTriangle className="h-5 w-5 !text-white" />
