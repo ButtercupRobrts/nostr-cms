@@ -30,7 +30,8 @@ export default function AdminDashboard() {
         filters.push({ kinds: [31234], authors: [user.pubkey], '#k': ['30023'], limit: 20 });
       }
 
-      const events = await nostr.query(filters, { signal });
+      const events = await nostr!.query(filters, { signal });
+
       // Defensive filter to ensure only kind 30023 or kind 31234 with k=30023 are included
       return events.filter(event =>
         event.kind === 30023 ||
@@ -45,11 +46,12 @@ export default function AdminDashboard() {
     queryKey: ['admin-events'],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
-      const events = await nostr.query([
+      const events = await nostr!.query([
         { kinds: [31922, 31923], limit: 50 }
       ], { signal });
       return events;
     },
+    enabled: !!nostr,
   });
 
   const handleRefresh = async () => {

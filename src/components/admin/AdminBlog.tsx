@@ -330,7 +330,7 @@ export default function AdminBlog() {
         filters.push({ kinds: [31234], authors: [user.pubkey], '#k': ['30023'], limit: 50 });
       }
 
-      const events = (await nostr.query(filters, { signal })).filter(event =>
+      const events = (await nostr!.query(filters, { signal })).filter(event =>
         event.kind === 30023 ||
         (event.kind === 31234 && event.tags.some(([name, value]) => name === 'k' && value === '30023'))
       );

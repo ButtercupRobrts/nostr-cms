@@ -156,7 +156,7 @@ export default function AdminEvents() {
     queryKey: ['admin-events'],
     queryFn: async () => {
       const signal = AbortSignal.timeout(2000);
-      const events = await nostr.query([
+      const events = await nostr!.query([
         { kinds: [31922, 31923], limit: 100 }
       ], { signal });
 
@@ -194,6 +194,7 @@ export default function AdminEvents() {
         };
       });
     },
+    enabled: !!nostr,
   });
 
   // Note: We'll filter events client-side based on author metadata in the render

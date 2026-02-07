@@ -25,7 +25,7 @@ export default function FormOrStaticPage({ pathOverride }: { pathOverride?: stri
       const unslashedPath = fullPath.startsWith('/') ? fullPath.slice(1) : fullPath;
       const slashedPath = fullPath.startsWith('/') ? fullPath : `/${fullPath}`;
 
-      const events = await defaultRelay.query(
+      const events = await defaultRelay!.query(
         [{ kinds: [30168], '#linked-path': [slashedPath, unslashedPath] }],
         { signal }
       );
@@ -44,6 +44,7 @@ export default function FormOrStaticPage({ pathOverride }: { pathOverride?: stri
 
       return { found: false };
     },
+    enabled: !!defaultRelay,
     staleTime: 60000, // Cache for 1 minute
   });
 

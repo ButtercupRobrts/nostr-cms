@@ -383,7 +383,7 @@ export default function AdminNotes() {
       const until = pageParam;
       if (!user?.pubkey) return [];
       const signal = AbortSignal.timeout(5000);
-      const events = await nostr.query([
+      const events = await nostr!.query([
         {
           kinds: [1],
           authors: [user.pubkey],
@@ -425,7 +425,7 @@ export default function AdminNotes() {
     queryFn: async () => {
       if (!user?.pubkey) return [];
       const signal = AbortSignal.timeout(5000);
-      const events = (await nostr.query([
+      const events = (await nostr!.query([
         { kinds: [31234], authors: [user.pubkey], '#k': ['1'], limit: 50 }
       ], { signal })).filter(e => e.tags.some(([t, v]) => t === 'k' && v === '1'));
 

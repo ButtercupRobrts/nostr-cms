@@ -645,7 +645,7 @@ const ResponseViewer: React.FC<ResponseViewerProps> = ({ form }) => {
       };
 
       const results = await Promise.allSettled([
-        nostr.query(filters, { signal }),
+        nostr ? nostr.query(filters, { signal }) : Promise.resolve([]),
         ...relaysToQuery.map(url => queryRelay(url))
       ]);
 
@@ -683,6 +683,7 @@ const ResponseViewer: React.FC<ResponseViewerProps> = ({ form }) => {
         };
       });
     },
+    enabled: !!nostr,
     refetchInterval: 30000,
   });
 
@@ -692,7 +693,7 @@ const ResponseViewer: React.FC<ResponseViewerProps> = ({ form }) => {
     enabled: !!responses && responses.length > 0,
     queryFn: async () => {
       const pubkeys = Array.from(new Set(responses!.map(r => r.pubkey)));
-      const events = await nostr.query([{ kinds: [0], authors: pubkeys }]);
+      const events = await nostr!.query([{ kinds: [0], authors: pubkeys }]);
       const map: Record<string, any> = {};
       events.forEach(event => {
         try {
@@ -891,7 +892,7 @@ export default function AdminForms() {
     gcTime: 0,
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
-      const events = await nostr.query(
+      const events = await nostr!.query(
         [{ kinds: [30168], limit: 100 }],
         { signal }
       );
@@ -923,6 +924,7 @@ export default function AdminForms() {
         } as NostrForm;
       });
     },
+    enabled: !!nostr,
   });
 
   // Fetch response counts for all forms
@@ -954,7 +956,7 @@ export default function AdminForms() {
       };
 
       const results = await Promise.allSettled([
-        nostr.query(filters, { signal }),
+        nostr ? nostr.query(filters, { signal }) : Promise.resolve([]),
         ...relaysToQuery.map(url => queryRelay(url))
       ]);
 
