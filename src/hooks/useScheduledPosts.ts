@@ -10,10 +10,10 @@ import type {
   NostrEvent,
 } from '@/types/scheduled';
 import { Event } from 'nostr-tools';
+import { getSchedulerApiUrl } from '@/lib/scheduler';
 
-// API base URL - strictly use Swarm API
-// Fallback to /api if VITE_SWARM_API_URL is not set, assuming proxy or same origin
-const API_BASE = import.meta.env.VITE_SWARM_API_URL || '/api';
+// API base URL - derived from VITE_SWARM_API_URL or VITE_DEFAULT_RELAY
+const API_BASE = getSchedulerApiUrl();
 
 /**
  * Fetch wrapper that adds NIP-98 Authorization header
