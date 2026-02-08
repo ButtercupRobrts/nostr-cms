@@ -152,17 +152,16 @@ export default function AdminDashboard() {
             <AlertDescription className="mt-2 text-orange-50 space-y-2">
               <p>
                 This is <span className="font-bold">NOT a normal nostr client</span>, this is a CMS, a content manager system for an organization.
-                The default relay set is the single source of truth for all content on the public facing side of the site, visible by "View Site".
-                It does not function like a normal nostr client. The additional relays are there for broadcasting your notes, blogs, events to other relays.
               </p>
               <p>
-                Existing, previous content on other relays will not show up on here unless it exists on the default relay.
+                In <Link to="/admin/system-settings" className="underline font-bold hover:text-white">Admin Settings</Link>, The default relay set is the single source of truth for all content on the public facing side of the site, visible by <Link to="/"  className="underline font-bold hover:text-white">View Site</Link>.
+                The additional relays are modifiable and used for broadcasting your notes, blogs, events to other relays.
+                Existing, previous content on other relays will not show here unless it exists on the default relay.
+              </p>
+              <p>
                 If you want to sync existing your content to the default relay, you can use the <Link to="/admin/sync-content" className="underline font-bold hover:text-white">Sync Content</Link> section.
-              </p>
-              <p>
-                User level access control is managed in <Link to="/admin/system-settings" className="underline font-bold hover:text-white">System Settings</Link>,
-                and different users have different publishing permissions. Please read them carefully in the <Link to="/admin/help" className="underline font-bold hover:text-white">Help</Link> section
-                .
+                User level access control is also managed in <Link to="/admin/system-settings" className="underline font-bold hover:text-white">Admin Settings</Link>,
+                and different users have different publishing permissions as outlined in the <Link to="/admin/help" className="underline font-bold hover:text-white">Help</Link> section.
               </p>
             </AlertDescription>
           )}
