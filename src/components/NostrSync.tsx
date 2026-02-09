@@ -3,6 +3,7 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { type AppConfig } from '@/contexts/AppContext';
+import { getDefaultRelayUrl } from '@/lib/relay';
 
 /**
  * NostrSync - Syncs user's Nostr data
@@ -71,15 +72,15 @@ export function NostrSync() {
       try {
         console.log('[NostrSync] Fetching site config from master:', masterPubkey);
 
-        // Get the current default relay from environment variable
-        const envDefaultRelay = import.meta.env.VITE_DEFAULT_RELAY;
+        // Get the current default relay (env var or auto-derived from domain)
+        const envDefaultRelay = getDefaultRelayUrl();
 
         // Check if the environment variable relay differs from what's in localStorage
         const localStoredRelay = config.siteConfig?.defaultRelay;
         const relayHasChanged = envDefaultRelay && localStoredRelay && envDefaultRelay !== localStoredRelay;
 
         if (relayHasChanged) {
-          console.log('[NostrSync] VITE_DEFAULT_RELAY has changed from', localStoredRelay, 'to', envDefaultRelay);
+          console.log('[NostrSync] Default relay has changed from', localStoredRelay, 'to', envDefaultRelay);
           console.log('[NostrSync] Skipping relay sync and prioritizing environment variable');
 
           // Update config to use the new relay from environment variable
@@ -137,7 +138,7 @@ export function NostrSync() {
           const eventRelayDiffersFromEnv = envDefaultRelay && relayFromEvent && envDefaultRelay !== relayFromEvent;
 
           if (eventRelayDiffersFromEnv) {
-            console.log('[NostrSync] Relay in Nostr event', relayFromEvent, 'differs from VITE_DEFAULT_RELAY', envDefaultRelay);
+            console.log('[NostrSync] Relay in Nostr event', relayFromEvent, 'differs from default relay', envDefaultRelay);
             console.log('[NostrSync] Prioritizing environment variable over relay data');
 
             // Override the relay from the event with the environment variable

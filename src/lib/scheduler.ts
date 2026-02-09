@@ -5,6 +5,8 @@
  * Now served by the Swarm Relay backend.
  */
 
+import { getApiBaseUrl } from '@/lib/relay';
+
 /**
  * Check if Scheduler is enabled/configured.
  * 
@@ -18,23 +20,8 @@ export function isSchedulerEnabled(): boolean {
 }
 
 /**
- * Derive the HTTP(S) API base URL from VITE_DEFAULT_RELAY.
- * Converts wss:// → https:// and ws:// → http://, then appends /api.
- * Falls back to /api for local dev proxy when no relay is configured.
- */
-function deriveApiUrlFromRelay(): string {
-  const relay = import.meta.env.VITE_DEFAULT_RELAY;
-  if (!relay) return '/api';
-  const httpUrl = relay
-    .replace(/\/$/, '')
-    .replace(/^wss:\/\//, 'https://')
-    .replace(/^ws:\/\//, 'http://');
-  return `${httpUrl}/api`;
-}
-
-/**
  * Get the Scheduler API base URL
  */
 export function getSchedulerApiUrl(): string {
-  return import.meta.env.VITE_SWARM_API_URL || deriveApiUrlFromRelay();
+  return getApiBaseUrl();
 }

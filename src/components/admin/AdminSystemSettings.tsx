@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
+import { getDefaultRelayUrl } from '@/lib/relay';
 
 interface SiteConfig {
   title: string;
@@ -126,9 +127,9 @@ export default function AdminSystemSettings() {
     showBlog: config.siteConfig?.showBlog ?? true,
     maxEvents: config.siteConfig?.maxEvents ?? 6,
     maxBlogPosts: config.siteConfig?.maxBlogPosts ?? 3,
-    defaultRelay: config.siteConfig?.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY,
+    defaultRelay: config.siteConfig?.defaultRelay ?? getDefaultRelayUrl(),
     publishRelays: config.siteConfig?.publishRelays ?? [
-      import.meta.env.VITE_DEFAULT_RELAY,
+      getDefaultRelayUrl(),
       'wss://relay.damus.io',
       'wss://relay.primal.net',
       'wss://nos.lol'
@@ -383,7 +384,7 @@ export default function AdminSystemSettings() {
     if (window.confirm('Are you sure you want to reset all settings to defaults? This will clear all local storage, cached data, delete relay metadata, and republish the default configuration to the relay. You will be logged out and the site will return to its original environment variable state.')) {
       try {
         // Get default values from environment variables
-        const envDefaultRelay = import.meta.env.VITE_DEFAULT_RELAY;
+        const envDefaultRelay = getDefaultRelayUrl();
 
         // 1. Delete NIP-65 relay list (kind 10002) from the relay
         if (user) {
@@ -504,7 +505,7 @@ export default function AdminSystemSettings() {
               disabled
             />
             <p className="text-xs text-muted-foreground mt-1">
-              This relay is used as the primary source for reading and publishing site content. Configured via <code>VITE_DEFAULT_RELAY</code> environment variable.
+              This relay is used as the primary source for reading and publishing site content. Auto-detected from domain or set via <code>VITE_DEFAULT_RELAY</code>.
             </p>
             {!siteConfig.defaultRelay?.trim() && (
               <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 rounded-md text-sm border border-amber-200 dark:border-amber-800">

@@ -50,6 +50,7 @@ import {
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getDefaultRelayUrl } from '@/lib/relay';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useRemoteNostrJson, useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useToast } from '@/hooks/useToast';
@@ -943,7 +944,7 @@ export default function AdminForms() {
       // Query multiple relays to improve reliability
       const relaysToQuery = Array.from(new Set([
         ...allForms!.flatMap(f => f.relays),
-        import.meta.env.VITE_DEFAULT_RELAY
+        getDefaultRelayUrl()
       ])).filter(Boolean);
 
       const queryRelay = async (relayUrl: string) => {

@@ -8,6 +8,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getDefaultRelayUrl } from '@/lib/relay';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -450,7 +451,7 @@ export default function AdminPages() {
                 Manage static site content mapped via NIP-nsite (kind 34128).
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Showing pages from default relay only: <span className="font-mono">{import.meta.env.VITE_DEFAULT_RELAY}</span>
+                Showing pages from default relay only: <span className="font-mono">{getDefaultRelayUrl()}</span>
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <Switch

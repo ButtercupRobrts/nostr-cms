@@ -17,6 +17,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { getDefaultRelayUrl } from '@/lib/relay';
 import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/useToast';
@@ -284,9 +285,9 @@ export default function AdminSettings() {
     feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
     maxEvents: config.siteConfig?.maxEvents ?? 6,
     maxBlogPosts: config.siteConfig?.maxBlogPosts ?? 3,
-    defaultRelay: config.siteConfig?.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY,
+    defaultRelay: config.siteConfig?.defaultRelay ?? getDefaultRelayUrl(),
     publishRelays: config.siteConfig?.publishRelays ?? [
-      import.meta.env.VITE_DEFAULT_RELAY,
+      getDefaultRelayUrl(),
       'wss://relay.damus.io',
       'wss://relay.primal.net',
       'wss://nos.lol'
@@ -318,7 +319,7 @@ export default function AdminSettings() {
       siteConfig.feedReadFromPublishRelays !== (originalConfig.feedReadFromPublishRelays ?? false) ||
       siteConfig.maxEvents !== (originalConfig.maxEvents ?? 6) ||
       siteConfig.maxBlogPosts !== (originalConfig.maxBlogPosts ?? 3) ||
-      siteConfig.defaultRelay !== (originalConfig.defaultRelay ?? import.meta.env.VITE_DEFAULT_RELAY) ||
+      siteConfig.defaultRelay !== (originalConfig.defaultRelay ?? getDefaultRelayUrl()) ||
       siteConfig.tweakcnThemeUrl !== (originalConfig.tweakcnThemeUrl ?? '') ||
       siteConfig.nip19Gateway !== (originalConfig.nip19Gateway ?? 'https://nostr.at') ||
       JSON.stringify(siteConfig.sectionOrder) !== JSON.stringify(originalConfig.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content']);
@@ -586,11 +587,11 @@ export default function AdminSettings() {
 
         // Check if relay from Nostr event differs from environment variable
         // This mirrors the logic in NostrSync to ensure consistency
-        const envDefaultRelay = import.meta.env.VITE_DEFAULT_RELAY;
+        const envDefaultRelay = getDefaultRelayUrl();
         const relayFromEvent = loadedConfig.defaultRelay as string | undefined;
 
         if (envDefaultRelay && relayFromEvent && envDefaultRelay !== relayFromEvent) {
-          console.log('[AdminSettings] Relay in Nostr event', relayFromEvent, 'differs from VITE_DEFAULT_RELAY', envDefaultRelay);
+          console.log('[AdminSettings] Relay in Nostr event', relayFromEvent, 'differs from default relay', envDefaultRelay);
           console.log('[AdminSettings] Prioritizing environment variable over relay data');
           loadedConfig.defaultRelay = envDefaultRelay;
         }

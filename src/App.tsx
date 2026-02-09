@@ -14,6 +14,7 @@ import { AppProvider } from '@/components/AppProvider';
 import { NWCProvider } from '@/contexts/NWCContext';
 import { AdminAuthProvider } from '@/contexts/AdminAuthContext';
 import { AppConfig } from '@/contexts/AppContext';
+import { getDefaultRelayUrl } from '@/lib/relay';
 import AppRouter from './AppRouter';
 
 const head = createHead({
@@ -33,8 +34,10 @@ const queryClient = new QueryClient({
   },
 });
 
+const DEFAULT_RELAY_URL = getDefaultRelayUrl();
+
 const DEFAULT_PUBLISH_RELAYS = [
-  import.meta.env.VITE_DEFAULT_RELAY,
+  DEFAULT_RELAY_URL,
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://nos.lol'
@@ -44,7 +47,7 @@ const defaultConfig: AppConfig = {
   theme: "light",
   relayMetadata: {
     relays: [
-      { url: import.meta.env.VITE_DEFAULT_RELAY, read: true, write: true },
+      { url: DEFAULT_RELAY_URL, read: true, write: true },
     ],
     updatedAt: 0,
   },
@@ -62,7 +65,7 @@ const defaultConfig: AppConfig = {
     feedReadFromPublishRelays: false,
     maxEvents: 6,
     maxBlogPosts: 3,
-    defaultRelay: import.meta.env.VITE_DEFAULT_RELAY,
+    defaultRelay: DEFAULT_RELAY_URL,
     publishRelays: DEFAULT_PUBLISH_RELAYS,
   },
   navigation: [

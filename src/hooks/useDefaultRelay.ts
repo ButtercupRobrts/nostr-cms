@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useAppContext } from '@/hooks/useAppContext';
+import { getDefaultRelayUrl } from '@/lib/relay';
 
 export function useDefaultRelay() {
   const { config } = useAppContext();
   const { nostr: poolNostr } = useNostr();
   
-  // Get the default relay from site config or fall back to environment variable or first relay
+  // Get the default relay from site config or fall back to auto-derived URL or first relay
   const defaultRelayUrl = config.siteConfig?.defaultRelay ||
-    import.meta.env.VITE_DEFAULT_RELAY ||
+    getDefaultRelayUrl() ||
     config.relayMetadata?.relays?.[0]?.url;
   
   // Create a dedicated connection to the default relay only
