@@ -12,12 +12,12 @@ const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefin
 
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const { user } = useCurrentUser();
-  const { isAdmin, isLoading: adminLoading } = useAdminAuthCheck(user?.pubkey);
+  const { isAdmin, isMaster, isLoading: adminLoading } = useAdminAuthCheck(user?.pubkey);
   
   return (
     <AdminAuthContext.Provider value={{
-      isAdmin,
-      isLoading: adminLoading,
+      isAdmin: isAdmin || isMaster,
+      isLoading: isMaster ? false : adminLoading,
       user
     }}>
       {children}
