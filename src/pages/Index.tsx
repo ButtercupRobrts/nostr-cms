@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getMasterPubkey } from '@/lib/relay';
 import { useQuery } from '@tanstack/react-query';
 import Navigation from '@/components/Navigation';
 import { Calendar, MapPin, Clock, ArrowRight, Edit } from 'lucide-react';
@@ -319,7 +320,7 @@ const Index = () => {
       ], { signal });
       
       const adminRoles = config.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
 
       return eventList
         .filter(event => {
@@ -374,7 +375,7 @@ const Index = () => {
       ], { signal });
       
       const adminRoles = config.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
 
       return postList
         .filter(event => {

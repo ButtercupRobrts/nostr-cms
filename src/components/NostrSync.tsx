@@ -3,7 +3,7 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { type AppConfig } from '@/contexts/AppContext';
-import { getDefaultRelayUrl } from '@/lib/relay';
+import { getDefaultRelayUrl, getMasterPubkey } from '@/lib/relay';
 
 /**
  * NostrSync - Syncs user's Nostr data
@@ -17,7 +17,7 @@ export function NostrSync() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const { config, updateConfig } = useAppContext();
-  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const masterPubkey = getMasterPubkey();
   const hasSyncedConfig = useRef(false);
 
   // Sync logged-in user's data (e.g. relays)

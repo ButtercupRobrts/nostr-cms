@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
-import { getDefaultRelayUrl } from '@/lib/relay';
+import { getDefaultRelayUrl, getMasterPubkey } from '@/lib/relay';
 
 interface SiteConfig {
   title: string;
@@ -112,7 +112,7 @@ export default function AdminSystemSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const masterPubkey = getMasterPubkey();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
 
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(() => ({

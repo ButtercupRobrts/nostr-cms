@@ -8,6 +8,7 @@ import { LoginArea } from '@/components/auth/LoginArea';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
+import { getMasterPubkey } from '@/lib/relay';
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import {
   LayoutDashboard,
@@ -52,7 +53,7 @@ export default function AdminLayout() {
   };
 
   const readOnlyEnabled = config.siteConfig?.readOnlyAdminAccess ?? false;
-  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const masterPubkey = getMasterPubkey();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
   const canAccessSettings = isMasterUser || (isAdmin && readOnlyEnabled);
 

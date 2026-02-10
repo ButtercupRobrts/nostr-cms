@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/useToast';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { getMasterPubkey } from '@/lib/relay';
 import { formatPubkey } from '@/lib/utils';
 import { useAuthor } from '@/hooks/useAuthor';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -94,7 +95,7 @@ export default function AdminFeed() {
     }
   }, [config.siteConfig]);
 
-  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const masterPubkey = getMasterPubkey();
   const userPubkey = user?.pubkey.toLowerCase().trim();
   const isMaster = userPubkey === masterPubkey;
   const adminRoles = config.siteConfig?.adminRoles || {};

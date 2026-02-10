@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getMasterPubkey } from '@/lib/relay';
 import { useAppContext } from '@/hooks/useAppContext';
 import Navigation from '@/components/Navigation';
 import { Calendar, MapPin, Clock, Search, Filter } from 'lucide-react';
@@ -55,7 +56,7 @@ export default function EventsPage() {
       ], { signal });
       
       const adminRoles = appContext.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
 
       return eventList
         .filter(event => {

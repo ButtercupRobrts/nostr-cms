@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { useHead, useSeoMeta } from '@unhead/react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { AppContext, type AppConfig, type AppContextType, type Theme, type RelayMetadata } from '@/contexts/AppContext';
+import { getMasterPubkey } from '@/lib/relay';
 
 interface AppProviderProps {
   children: ReactNode;
@@ -100,7 +101,7 @@ export function AppProvider(props: AppProviderProps) {
     // Start with defaultConfig
     const merged = { ...defaultConfig };
 
-    const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+    const masterPubkey = getMasterPubkey();
 
     // Merge rawConfig (localStorage)
     if (rawConfig.theme) merged.theme = rawConfig.theme;

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { getMasterPubkey } from '@/lib/relay';
 
 interface NostrJsonResponse {
   names: Record<string, string>;
@@ -24,15 +25,14 @@ export function useRemoteNostrJson(url: string = DEFAULT_NOSTR_JSON_URL) {
   });
 }
 
-const MASTER_PUBKEY = import.meta.env.VITE_MASTER_PUBKEY || '';
-
 export function useAdminAuth(pubkey?: string) {
   const { data: nostrJson, isLoading } = useRemoteNostrJson();
+  const masterPubkey = getMasterPubkey();
 
   const isAdmin = pubkey && nostrJson?.names ?
     Object.values(nostrJson.names).some(pk => pk.toLowerCase().trim() === pubkey.toLowerCase().trim()) : false;
 
-  const isMaster = pubkey && MASTER_PUBKEY && pubkey.toLowerCase().trim() === MASTER_PUBKEY.toLowerCase().trim();
+  const isMaster = pubkey && masterPubkey && pubkey.toLowerCase().trim() === masterPubkey;
 
   return {
     isAdmin,

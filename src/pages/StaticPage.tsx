@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getMasterPubkey } from '@/lib/relay';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
@@ -53,7 +54,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
       console.log('StaticPage: Found events:', events);
       
       const adminRoles = appContext.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
       
       return events
         .filter(event => {

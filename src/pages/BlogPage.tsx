@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { PageLoadingIndicator } from '@/components/PageLoadingIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getMasterPubkey } from '@/lib/relay';
 import { useAppContext } from '@/hooks/useAppContext';
 import Navigation from '@/components/Navigation';
 import { Search, Calendar, Edit } from 'lucide-react';
@@ -38,7 +39,7 @@ export default function BlogPage() {
       ], { signal });
       
       const adminRoles = config.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
 
       return postList
         .filter(event => {

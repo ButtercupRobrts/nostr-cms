@@ -1,10 +1,37 @@
 /**
- * Relay URL utilities for Swarm integration.
- * 
- * When VITE_DEFAULT_RELAY is set (build-time), that value is used.
- * When unset, the relay URL is auto-derived from the current browser domain,
- * enabling zero-config same-domain deployments.
+ * Swarm runtime config utilities.
+ *
+ * The Go server injects window.__SWARM_CONFIG__ into index.html at serve time,
+ * providing runtime values (masterPubkey, relayName) without requiring build-time
+ * Vite environment variables. Build-time VITE_* vars still work as overrides.
  */
+
+interface SwarmConfig {
+  masterPubkey?: string;
+  relayName?: string;
+}
+
+/** Read the server-injected config (set by the Go server in index.html) */
+function getSwarmConfig(): SwarmConfig {
+  if (typeof window !== 'undefined' && '__SWARM_CONFIG__' in window) {
+    return (window as unknown as Record<string, unknown>).__SWARM_CONFIG__ as SwarmConfig;
+  }
+  return {};
+}
+
+/**
+ * Get the master/admin pubkey.
+ * Priority: VITE_MASTER_PUBKEY env var → server-injected __SWARM_CONFIG__
+ */
+export function getMasterPubkey(): string {
+  const envPubkey = import.meta.env.VITE_MASTER_PUBKEY;
+  if (envPubkey) return envPubkey.toLowerCase().trim();
+
+  const injected = getSwarmConfig().masterPubkey;
+  if (injected) return injected.toLowerCase().trim();
+
+  return '';
+}
 
 /**
  * Get the default relay WebSocket URL.

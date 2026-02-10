@@ -10,6 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
+import { getMasterPubkey } from '@/lib/relay';
 import { useAppContext } from '@/hooks/useAppContext';
 import { ArrowLeft, Calendar, MapPin, Clock } from 'lucide-react';
 import { AuthorInfo } from '@/components/AuthorInfo';
@@ -34,7 +35,7 @@ export default function EventPage() {
       const e = events[0];
 
       const adminRoles = config.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
       
       const authorPubkey = e.pubkey.toLowerCase().trim();
       if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'primary') return null;

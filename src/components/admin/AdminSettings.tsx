@@ -17,7 +17,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { getDefaultRelayUrl } from '@/lib/relay';
+import { getDefaultRelayUrl, getMasterPubkey } from '@/lib/relay';
 import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/useToast';
@@ -254,7 +254,7 @@ export default function AdminSettings() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previewThemeUrl, setPreviewThemeUrl] = useState<string | null>(null);
 
-  const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+  const masterPubkey = getMasterPubkey();
   const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
 
   const [navigation, setNavigation] = useState<NavigationItem[]>(() =>
@@ -496,7 +496,7 @@ export default function AdminSettings() {
     setIsRefreshing(true);
 
     try {
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
       const signal = AbortSignal.timeout(5000);
       const events = await nostr.query([
         {

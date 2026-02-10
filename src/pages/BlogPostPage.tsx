@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useSeoMeta } from '@unhead/react';
 import { useAppContext } from '@/hooks/useAppContext';
+import { getMasterPubkey } from '@/lib/relay';
 import { AuthorInfo } from '@/components/AuthorInfo';
 
 export default function BlogPostPage() {
@@ -27,7 +28,7 @@ export default function BlogPostPage() {
       if (!event) return null;
 
       const adminRoles = config.siteConfig?.adminRoles || {};
-      const masterPubkey = (import.meta.env.VITE_MASTER_PUBKEY || '').toLowerCase().trim();
+      const masterPubkey = getMasterPubkey();
       
       const authorPubkey = event.pubkey.toLowerCase().trim();
       if (authorPubkey !== masterPubkey && adminRoles[authorPubkey] !== 'primary') return null;
