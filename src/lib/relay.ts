@@ -1,9 +1,10 @@
 /**
  * Swarm runtime config utilities.
  *
- * The Go server injects window.__SWARM_CONFIG__ into index.html at serve time,
+ * The Go server injects a <meta name="swarm-config"> tag into index.html at serve time,
  * providing runtime values (masterPubkey, relayName) without requiring build-time
- * Vite environment variables. Build-time VITE_* vars still work as overrides.
+ * Vite environment variables. Uses <meta> to avoid CSP inline script violations.
+ * Build-time VITE_* vars still work as overrides.
  */
 
 interface SwarmConfig {
@@ -11,10 +12,19 @@ interface SwarmConfig {
   relayName?: string;
 }
 
-/** Read the server-injected config (set by the Go server in index.html) */
+/** Read the server-injected config from <meta name="swarm-config"> tag.
+ *  The Go server injects this into index.html at serve time.
+ *  Uses <meta> instead of inline <script> to avoid CSP violations. */
 function getSwarmConfig(): SwarmConfig {
-  if (typeof window !== 'undefined' && '__SWARM_CONFIG__' in window) {
-    return (window as unknown as Record<string, unknown>).__SWARM_CONFIG__ as SwarmConfig;
+  if (typeof document !== 'undefined') {
+    const meta = document.querySelector('meta[name="swarm-config"]');
+    if (meta) {
+      try {
+        return JSON.parse(meta.getAttribute('content') || '{}') as SwarmConfig;
+      } catch {
+        return {};
+      }
+    }
   }
   return {};
 }
