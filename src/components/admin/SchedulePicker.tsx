@@ -43,23 +43,6 @@ export function SchedulePicker({ value, onChange, disabled = false }: SchedulePi
     }
   };
 
-  const handleDateTimeChange = () => {
-    if (!dateInput || !timeInput) return;
-
-    const [year, month, day] = dateInput.split('-').map(Number);
-    const [hours, minutes] = timeInput.split(':').map(Number);
-
-    const scheduledFor = new Date(year, month - 1, day, hours, minutes);
-
-    // Validate date is in the future
-    if (scheduledFor.getTime() <= Date.now()) {
-      // Add minimum buffer of 1 minute
-      scheduledFor.setTime(Date.now() + 60 * 1000);
-    }
-
-    onChange({ enabled: true, scheduledFor });
-  };
-
   const handleQuickSchedule = (minutes: number) => {
     const scheduledFor = new Date(Date.now() + minutes * 60 * 1000);
     setDateInput(format(scheduledFor, "yyyy-MM-dd"));
@@ -102,6 +85,7 @@ export function SchedulePicker({ value, onChange, disabled = false }: SchedulePi
         </div>
         <div className="flex items-center gap-2">
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             onClick={handleClear}
@@ -179,6 +163,7 @@ export function SchedulePicker({ value, onChange, disabled = false }: SchedulePi
           { label: '1w', minutes: 10080 },
         ].map(({ label, minutes }) => (
           <Button
+            type="button"
             key={label}
             variant="outline"
             size="sm"

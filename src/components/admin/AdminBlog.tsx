@@ -465,7 +465,7 @@ export default function AdminBlog() {
     }
 
     // Handle scheduled posts
-    if (scheduleConfig.enabled && scheduleConfig.scheduledFor && formData.published) {
+    if (scheduleConfig.enabled && scheduleConfig.scheduledFor) {
       try {
         const dTag = editingPost?.d || `blog-${Date.now()}`;
         const scheduledFor = scheduleConfig.scheduledFor;
@@ -843,16 +843,32 @@ export default function AdminBlog() {
                   <Switch
                     id="published"
                     checked={formData.published}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, published: checked }))}
+                    onCheckedChange={(checked) => {
+                      setFormData(prev => ({ ...prev, published: checked }));
+                      // If publishing immediately, disable scheduling
+                      if (checked && scheduleConfig.enabled) {
+                        setScheduleConfig({ enabled: false, scheduledFor: null });
+                      }
+                    }}
+                    disabled={scheduleConfig.enabled}
                   />
-                  <Label htmlFor="published">Publish immediately</Label>
+                  <Label htmlFor="published" className={scheduleConfig.enabled ? 'text-muted-foreground' : ''}>
+                    Publish immediately
+                    {scheduleConfig.enabled && <span className="text-xs ml-1">(disabled while scheduling)</span>}
+                  </Label>
                 </div>
 
                 {/* Schedule Picker */}
                 {isSchedulerHealthy && (
                   <SchedulePicker
                     value={scheduleConfig}
-                    onChange={setScheduleConfig}
+                    onChange={(config) => {
+                      setScheduleConfig(config);
+                      // If scheduling is enabled, turn off publish immediately
+                      if (config.enabled) {
+                        setFormData(prev => ({ ...prev, published: false }));
+                      }
+                    }}
                     disabled={isScheduling}
                   />
                 )}
