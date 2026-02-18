@@ -261,9 +261,9 @@ function buildSeoMetaBlock(route) {
     `    <meta property="og:title" content="${title}" />`,
     `    <meta property="og:description" content="${description}" />`,
     '    <meta property="og:type" content="website" />',
-    '    <meta property="twitter:card" content="summary_large_image" />',
-    `    <meta property="twitter:title" content="${title}" />`,
-    `    <meta property="twitter:description" content="${description}" />`,
+    '    <meta name="twitter:card" content="summary_large_image" />',
+    `    <meta name="twitter:title" content="${title}" />`,
+    `    <meta name="twitter:description" content="${description}" />`,
   ];
 
   if (ogUrl) {
@@ -272,7 +272,7 @@ function buildSeoMetaBlock(route) {
 
   if (ogImage) {
     lines.push(`    <meta property="og:image" content="${escapeHtml(ogImage)}" />`);
-    lines.push(`    <meta property="twitter:image" content="${escapeHtml(ogImage)}" />`);
+    lines.push(`    <meta name="twitter:image" content="${escapeHtml(ogImage)}" />`);
   }
 
   return lines.join('\n');
