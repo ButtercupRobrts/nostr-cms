@@ -17,14 +17,9 @@ function isImageUrl(url: string) {
     const urlObj = new URL(url);
     const path = urlObj.pathname.split('#')[0]?.split('?')[0] ?? '';
 
-    // Check for common image extensions
-    if (/\.(png|jpe?g|gif|webp|bmp|svg|avif|heic|heif)$/i.test(path)) return true;
-
-    // Check for Blossom-style SHA256 hashes (64 hex characters)
-    // Blossom URLs often look like https://server.com/sha256
-    const pathParts = path.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    if (/^[0-9a-f]{64}$/i.test(lastPart)) return true;
+    // Only auto-embed when URL explicitly looks like an image file.
+    // Bare Blossom hashes can point to any content type and cause noisy load errors.
+    if (/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(path)) return true;
 
     return false;
   } catch {
