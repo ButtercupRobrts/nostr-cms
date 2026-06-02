@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -146,6 +146,30 @@ export default function AdminSystemSettings() {
   }));
 
   const { data: remoteNostrJson } = useRemoteNostrJson();
+  const dedupedNostrEntries = useMemo(() => {
+    const names = remoteNostrJson?.names;
+    if (!names) return [] as Array<[string, string]>;
+
+    const byPubkey = new Map<string, [string, string]>();
+
+    for (const [name, pubkey] of Object.entries(names)) {
+      const normalizedPubkey = pubkey.toLowerCase().trim();
+      const existing = byPubkey.get(normalizedPubkey);
+
+      if (!existing) {
+        byPubkey.set(normalizedPubkey, [name, normalizedPubkey]);
+        continue;
+      }
+
+      const existingIsRootAlias = existing[0].trim() === '_';
+      const incomingIsRootAlias = name.trim() === '_';
+      if (!existingIsRootAlias && incomingIsRootAlias) {
+        byPubkey.set(normalizedPubkey, [name, normalizedPubkey]);
+      }
+    }
+
+    return Array.from(byPubkey.values());
+  }, [remoteNostrJson?.names]);
 
   useEffect(() => {
     if (isSaving || isRefreshing) return;
@@ -623,8 +647,7 @@ export default function AdminSystemSettings() {
           </div>
 
           <div className="grid gap-4">
-            {remoteNostrJson?.names && Object.entries(remoteNostrJson.names).map(([name, pubkey]) => {
-              const normalizedPubkey = pubkey.toLowerCase().trim();
+            {dedupedNostrEntries.map(([name, normalizedPubkey]) => {
               const normalizedMaster = masterPubkey.toLowerCase().trim();
 
               return (
