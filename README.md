@@ -1,5 +1,7 @@
 # A Nostr CMS for Organizations
 
+Architecture overview for the combined CMS + relay setup: [docs/MEETUP_SPACE_ARCHITECTURE.md](./docs/MEETUP_SPACE_ARCHITECTURE.md)
+
 ## Use the [Super Easy Setup Guide](https://setupcms.hivetalk.org/)
 
 or
