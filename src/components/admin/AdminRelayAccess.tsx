@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { useToast } from '@/hooks/useToast';
-import { getMasterPubkey, getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
+import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
 import { AlertTriangle, RefreshCw, ShieldAlert, Trash2, UserPlus } from 'lucide-react';
 
 interface RelayUsersResponse {
@@ -67,6 +68,7 @@ async function parseError(response: Response): Promise<string> {
 
 export default function AdminRelayAccess() {
   const { user } = useCurrentUser();
+  const { isMaster: isMasterUser, masterPubkey } = useAdminAuth(user?.pubkey);
   const { toast } = useToast();
 
   const [users, setUsers] = useState<RelayUser[]>([]);
@@ -82,8 +84,6 @@ export default function AdminRelayAccess() {
   const [editingPubkey, setEditingPubkey] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
-  const masterPubkey = getMasterPubkey();
-  const isMasterUser = user?.pubkey?.toLowerCase().trim() === masterPubkey;
   const unified = isUnifiedSetup();
   const adminApiBase = getSwarmAdminApiUrl();
   const adminApiBases = useMemo(() => {
@@ -95,14 +95,47 @@ export default function AdminRelayAccess() {
     return legacy && legacy !== primary ? [primary, legacy] : [primary];
   }, [adminApiBase]);
 
+  const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
+    if (!user?.pubkey) {
+      throw new Error('Please login with the primary owner key first');
+    }
+
+    const loginResponse = await fetch(`${base}/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
+    });
+
+    if (!loginResponse.ok) {
+      throw new Error(await parseError(loginResponse));
+    }
+  }, [user?.pubkey]);
+
   const fetchAdminApi = useCallback(async (path: string, init?: RequestInit): Promise<Response> => {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    const method = (init?.method || 'GET').toUpperCase();
+    const requiresSession = method !== 'GET';
 
     for (let index = 0; index < adminApiBases.length; index++) {
-      const response = await fetch(`${adminApiBases[index]}${normalizedPath}`, {
+      const base = adminApiBases[index];
+
+      if (requiresSession) {
+        await ensureAdminSession(base);
+      }
+
+      let response = await fetch(`${base}${normalizedPath}`, {
         credentials: 'include',
         ...init,
       });
+
+      if (response.status === 401 && requiresSession) {
+        await ensureAdminSession(base);
+        response = await fetch(`${base}${normalizedPath}`, {
+          credentials: 'include',
+          ...init,
+        });
+      }
 
       if (response.status !== 404 || index === adminApiBases.length - 1) {
         return response;
@@ -110,7 +143,7 @@ export default function AdminRelayAccess() {
     }
 
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases]);
+  }, [adminApiBases, ensureAdminSession]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {

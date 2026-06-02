@@ -8,7 +8,7 @@ import { LoginArea } from '@/components/auth/LoginArea';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
-import { getMasterPubkey } from '@/lib/relay';
+import { isUnifiedSetup } from '@/lib/relay';
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,7 @@ import {
   Clock,
   ClipboardList,
   RefreshCw,
+  UserRoundCog,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -46,7 +47,7 @@ export default function AdminLayout() {
   const { theme, setTheme } = useTheme();
   const { user } = useCurrentUser();
   const { config } = useAppContext();
-  const { isAdmin } = useAdminAuth(user?.pubkey);
+  const { isAdmin, isMaster: isMasterUser } = useAdminAuth(user?.pubkey);
   const { data: isSchedulerHealthy } = useSchedulerHealth();
   const { nostr } = useDefaultRelay();
   const queryClient = useQueryClient();
@@ -87,9 +88,8 @@ export default function AdminLayout() {
   };
 
   const readOnlyEnabled = config.siteConfig?.readOnlyAdminAccess ?? false;
-  const masterPubkey = getMasterPubkey();
-  const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
   const canAccessSettings = isMasterUser || (isAdmin && readOnlyEnabled);
+  const canManageRelayAccess = isUnifiedSetup() && isMasterUser;
 
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -104,6 +104,7 @@ export default function AdminLayout() {
     { name: 'Pages', href: '/admin/pages', icon: FileCode },
     { name: 'Forms', href: '/admin/forms', icon: ClipboardList },
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
+    ...(canManageRelayAccess ? [{ name: 'Manage Relay Access', href: '/admin/relay-access', icon: UserRoundCog }] : []),
     ...(canAccessSettings ? [
       { name: 'Site Settings', href: '/admin/settings', icon: Settings },
       { name: 'Admin Settings', href: '/admin/system-settings', icon: Shield }

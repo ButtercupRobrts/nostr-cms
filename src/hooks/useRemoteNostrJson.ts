@@ -7,7 +7,7 @@ interface NostrJsonResponse {
   nip46?: Record<string, string[]>;
 }
 
-const DEFAULT_NOSTR_JSON_URL = import.meta.env.VITE_REMOTE_NOSTR_JSON_URL || '';
+const DEFAULT_NOSTR_JSON_URL = import.meta.env.VITE_REMOTE_NOSTR_JSON_URL || '/.well-known/nostr.json';
 
 export function useRemoteNostrJson(url: string = DEFAULT_NOSTR_JSON_URL) {
   return useQuery({
@@ -27,7 +27,8 @@ export function useRemoteNostrJson(url: string = DEFAULT_NOSTR_JSON_URL) {
 
 export function useAdminAuth(pubkey?: string) {
   const { data: nostrJson, isLoading } = useRemoteNostrJson();
-  const masterPubkey = getMasterPubkey();
+  const masterFromNostrJson = nostrJson?.names?._?.toLowerCase().trim() || '';
+  const masterPubkey = masterFromNostrJson || getMasterPubkey();
 
   const isAdmin = pubkey && nostrJson?.names ?
     Object.values(nostrJson.names).some(pk => pk.toLowerCase().trim() === pubkey.toLowerCase().trim()) : false;
@@ -38,6 +39,7 @@ export function useAdminAuth(pubkey?: string) {
     isAdmin,
     isMaster: !!isMaster,
     isLoading,
+    masterPubkey,
     allowedPubkeys: nostrJson?.names ? Object.values(nostrJson.names) : [],
   };
 }

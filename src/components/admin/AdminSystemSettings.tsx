@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
-import { getDefaultRelayUrl, getMasterPubkey, getSiteConfigDTag } from '@/lib/relay';
+import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
 
 interface SiteConfig {
   title: string;
@@ -111,9 +111,7 @@ export default function AdminSystemSettings() {
   const { user } = useCurrentUser();
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const masterPubkey = getMasterPubkey();
-  const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
+  const { isAdmin, isMaster: isMasterUser, isLoading: authLoading, masterPubkey } = useAdminAuth(user?.pubkey);
 
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(() => ({
     title: config.siteConfig?.title ?? 'My Meetup Site',
@@ -187,7 +185,6 @@ export default function AdminSystemSettings() {
     }
   }, [config.siteConfig, isSaving, isRefreshing, isMasterUser]);
 
-  const { isAdmin, isLoading: authLoading } = useAdminAuth(user?.pubkey);
   const canView = isMasterUser || (isAdmin && (siteConfig.readOnlyAdminAccess || config.siteConfig?.readOnlyAdminAccess));
 
   if (authLoading) {
@@ -215,6 +212,9 @@ export default function AdminSystemSettings() {
     setIsRefreshing(true);
 
     try {
+      if (!masterPubkey) {
+        throw new Error('Master pubkey is not available');
+      }
       const signal = AbortSignal.timeout(5000);
       const scopedDTag = getSiteConfigDTag();
       const events = await nostr.query([

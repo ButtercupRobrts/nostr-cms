@@ -107,3 +107,32 @@ export function getApiBaseUrl(): string {
     .replace(/^ws:\/\//, 'http://');
   return `${httpUrl}/api`;
 }
+
+function getUrlHost(url: string): string {
+  if (!url || typeof window === 'undefined') return '';
+
+  try {
+    return new URL(url, window.location.origin).host;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Unified setup means CMS and Swarm share the same domain
+ * (typically / for CMS, /api for Swarm, and wss://<domain>/ for relay).
+ */
+export function isUnifiedSetup(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const relayHost = getUrlHost(getDefaultRelayUrl());
+  const apiHost = getUrlHost(getApiBaseUrl());
+  const currentHost = window.location.host;
+
+  return relayHost === currentHost && apiHost === currentHost;
+}
+
+/** Base URL for relay admin endpoints. */
+export function getSwarmAdminApiUrl(): string {
+  return `${getApiBaseUrl().replace(/\/$/, '')}/admin`;
+}

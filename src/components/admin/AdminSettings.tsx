@@ -17,7 +17,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { getDefaultRelayUrl, getMasterPubkey, getSiteConfigDTag } from '@/lib/relay';
+import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
 import { Save, Plus, Trash2, GripVertical, RefreshCw, ShieldAlert, Eye, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/useToast';
@@ -254,8 +254,7 @@ export default function AdminSettings() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [previewThemeUrl, setPreviewThemeUrl] = useState<string | null>(null);
 
-  const masterPubkey = getMasterPubkey();
-  const isMasterUser = user?.pubkey.toLowerCase().trim() === masterPubkey;
+  const { isAdmin, isMaster: isMasterUser, isLoading: authLoading, masterPubkey } = useAdminAuth(user?.pubkey);
 
   const [navigation, setNavigation] = useState<NavigationItem[]>(() =>
     config.navigation ?? [
@@ -465,7 +464,6 @@ export default function AdminSettings() {
     }
   };
 
-  const { isAdmin, isLoading: authLoading } = useAdminAuth(user?.pubkey);
   const canView = isMasterUser || (isAdmin && (siteConfig.readOnlyAdminAccess || config.siteConfig?.readOnlyAdminAccess));
 
   if (authLoading) {
@@ -494,7 +492,9 @@ export default function AdminSettings() {
     setIsRefreshing(true);
 
     try {
-      const masterPubkey = getMasterPubkey();
+      if (!masterPubkey) {
+        throw new Error('Master pubkey is not available');
+      }
       const signal = AbortSignal.timeout(5000);
       const scopedDTag = getSiteConfigDTag();
       const events = await nostr.query([
