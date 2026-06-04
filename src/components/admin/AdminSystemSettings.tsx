@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Save, Plus, Trash2, RefreshCw, User, Shield, ShieldAlert, CheckCircle2, AlertTriangle, RotateCcw, ExternalLink } from 'lucide-react';
-import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
+import { useNostrJsonUsers, dedupeUsersByPubkey } from '@/hooks/useNostrJsonUsers';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -143,31 +143,12 @@ export default function AdminSystemSettings() {
     readOnlyAdminAccess: config.siteConfig?.readOnlyAdminAccess ?? false,
   }));
 
-  const { data: remoteNostrJson } = useRemoteNostrJson();
+  const { data: nostrJsonData, isLoading: isLoadingUsers } = useNostrJsonUsers();
   const dedupedNostrEntries = useMemo(() => {
-    const names = remoteNostrJson?.names;
-    if (!names) return [] as Array<[string, string]>;
-
-    const byPubkey = new Map<string, [string, string]>();
-
-    for (const [name, pubkey] of Object.entries(names)) {
-      const normalizedPubkey = pubkey.toLowerCase().trim();
-      const existing = byPubkey.get(normalizedPubkey);
-
-      if (!existing) {
-        byPubkey.set(normalizedPubkey, [name, normalizedPubkey]);
-        continue;
-      }
-
-      const existingIsRootAlias = existing[0].trim() === '_';
-      const incomingIsRootAlias = name.trim() === '_';
-      if (!existingIsRootAlias && incomingIsRootAlias) {
-        byPubkey.set(normalizedPubkey, [name, normalizedPubkey]);
-      }
-    }
-
-    return Array.from(byPubkey.values());
-  }, [remoteNostrJson?.names]);
+    if (!nostrJsonData?.users) return [] as Array<[string, string]>;
+    const deduped = dedupeUsersByPubkey(nostrJsonData.users);
+    return deduped.map(u => [u.name, u.pubkey] as [string, string]);
+  }, [nostrJsonData]);
 
   useEffect(() => {
     if (isSaving || isRefreshing) return;
@@ -670,9 +651,9 @@ export default function AdminSystemSettings() {
                 />
               );
             })}
-            {(!remoteNostrJson?.names || Object.keys(remoteNostrJson.names).length === 0) && (
+            {(isLoadingUsers || !nostrJsonData?.users || nostrJsonData.users.length === 0) && (
               <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
-                No users found in remote nostr.json
+                {isLoadingUsers ? 'Loading users...' : 'No users found in nostr.json'}
               </div>
             )}
           </div>

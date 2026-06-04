@@ -385,6 +385,20 @@ export default function AdminRelayAccess() {
         </Button>
       </div>
 
+      <Card>
+        <CardContent className="pt-6 flex items-start gap-3 text-sm">
+          <ShieldAlert className="h-5 w-5 mt-0.5 text-blue-500" />
+          <div>
+            <p className="font-medium">Unified Setup Only</p>
+            <p className="text-muted-foreground">
+              This section is only visible when CMS and Swarm relay share the same domain.
+              If you are running CMS and relay separately, this tab will not appear and
+              relay access must be managed through your relay's external administration interface.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {isRemote && (
         <Card>
           <CardContent className="pt-6 flex items-start gap-3 text-sm">
