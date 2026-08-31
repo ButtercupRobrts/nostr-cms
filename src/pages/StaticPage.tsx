@@ -15,7 +15,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
   const { config: appContext } = useAppContext();
   const { path } = useParams<{ path: string }>();
   const { nostr: defaultRelay } = useDefaultRelay();
-  const blossomRelays = useBlossomRelays();
+  const blossomRelays = ([] as string[]);
   const [content, setContent] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const fullPath = pathOverride || `/${path}`;
