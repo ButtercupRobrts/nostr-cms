@@ -18,7 +18,7 @@ import type { NostrEvent, NostrFilter, NRelay } from '@nostrify/nostrify';
 export async function fetchRoomDetails(
   roomCoords: string,
   nostr: { relay: (url: string) => NRelay; query: (filters: NostrFilter[], opts: { signal?: AbortSignal }) => Promise<NostrEvent[]> },
-): Promise<RoomDetails | null> {
+): Promise<any | null> {
   if (!roomCoords || !nostr) return null;
 
   // Parse coordinates: "30312:pubkey:d-tag"

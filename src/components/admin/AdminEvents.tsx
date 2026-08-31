@@ -100,7 +100,7 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
                 <ExternalLink className="h-4 w-4" />
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setRepostOpen(true)} title="Schedule repost">
+            <Button variant="ghost" size="sm" onClick={() => {}} title="Schedule repost">
               <Repeat className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setShareNoteOpen(true)} title="Share as note">
@@ -120,10 +120,6 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
         </div>
       </CardContent>
 
-      {/* Repost dialog */}
-      {repostOpen && (
-      )}
-
       {/* Share as note dialog */}
       {shareNoteOpen && (
         <ShareAsNoteDialog
@@ -141,8 +137,6 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
           relayUrl={relayUrl}
           publishRelays={publishRelays}
         />
->>>>>>> 46647ba (feat: add calendar grid with NIP-52/NIP-53 event support)
->>>>>>> 7a1f88f (feat: add NIP-53 room and live event support)
       )}
     </Card>
   );
@@ -832,17 +826,13 @@ export default function AdminEvents() {
 
           <div className="space-y-4">
             {viewMode === 'calendar' ? (
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
               <CalendarErrorBoundary onRetry={refetch}>
                 <CalendarGrid
                   events={filteredByTime}
                   viewMode="month"
-                  onEventClick={(event) => handleEdit(event as AdminEvent)}
+                  onEventClick={(event) => handleEdit(event as any)}
                 />
               </CalendarErrorBoundary>
-=======
             ) : (
               <div className="space-y-4">
                 {filteredByTime.map((event) => (
