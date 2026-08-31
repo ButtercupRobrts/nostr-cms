@@ -54,12 +54,16 @@ export function ShareAsNoteDialog({
   const { mutateAsync: publishEvent, isPending } = useNostrPublish();
   const [content, setContent] = useState('');
 
-  const isAddressable = isAddressableKind(target.kind) && !!target.d;
+  const isAddressable = (target.kind >= 30000 && target.kind < 40000) && !!target.d;
 
-  const getEventNaddr = () => encodeEventRef(
-    { id: target.id, pubkey: target.pubkey, kind: target.kind, tags: target.d ? [['d', target.d]] : [] },
-    relayUrl,
-  );
+  const getEventNaddr = () => {
+    try {
+      if (target.d) {
+        return nip19.naddrEncode({ identifier: target.d, pubkey: target.pubkey, kind: target.kind, relays: relayUrl ? [relayUrl] : [] });
+      }
+      return nip19.neventEncode({ id: target.id, author: target.pubkey, kind: target.kind, relays: relayUrl ? [relayUrl] : [] });
+    } catch { return ''; }
+  };
 
   const getEventCoordinate = () => {
     if (isAddressable && target.d) {
@@ -163,7 +167,7 @@ export function ShareAsNoteDialog({
             Share as Note
           </DialogTitle>
           <DialogDescription>
-            Write a kind 1 note quoting this {kindLabel(target.kind).toLowerCase()}.
+            Write a kind 1 note quoting this {'event'}.
           </DialogDescription>
         </DialogHeader>
 
@@ -179,7 +183,7 @@ export function ShareAsNoteDialog({
               </p>
             )}
             <p className="text-xs text-muted-foreground mt-1">
-              {kindLabel(target.kind)} · Quoted via NIP-18
+              {'Event'} · Quoted via NIP-18
             </p>
           </div>
         </div>
