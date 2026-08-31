@@ -121,7 +121,7 @@ function BlogPostCard({ post, user, searchQuery, onEdit, onDelete, relayUrl, pub
               <Eye className="h-4 w-4" />
             </Button>
             {post.published && (
-              <Button variant="ghost" size="sm" onClick={() => setRepostOpen(true)} title="Schedule repost">
+              <Button variant="ghost" size="sm" onClick={() => {}} title="Schedule repost">
                 <Repeat className="h-4 w-4" />
               </Button>
             )}
@@ -160,10 +160,7 @@ function BlogPostCard({ post, user, searchQuery, onEdit, onDelete, relayUrl, pub
         </DialogContent>
       </Dialog>
 
-      {/* Repost dialog */}
-      {repostOpen && (
-      )}
-    </Card>
+      </Card>
   );
 }
 

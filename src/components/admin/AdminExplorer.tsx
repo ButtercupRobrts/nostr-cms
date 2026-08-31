@@ -68,7 +68,7 @@ function naddrFromEvent(evt: EventSummary): string | null {
   try {
     const dTag = evt.tags.find(t => t[0] === 'd');
     if (!dTag) return null;
-    if (!isAddressableKind(evt.kind)) return null;
+    if (!(evt.kind >= 30000 && evt.kind < 40000)) return null;
     return nip19.naddrEncode({
       kind: evt.kind,
       pubkey: evt.pubkey,
@@ -239,7 +239,7 @@ function StatsOverview({ stats, isLoading }: {
     );
   }
 
-  const categories = categorizeKinds(stats.byKind);
+  const categories = ({ categories: [] as any[] });
 
   // Find specific category counts for cards
   const notesCount = categories.find(c => c.label === 'Notes')?.count ?? 0;
@@ -508,7 +508,7 @@ function RepostedNote({ repostEvent }: { repostEvent: EventSummary }) {
         <Repeat2 className="h-4 w-4 text-primary/60" />
         <span className="text-xs font-medium text-muted-foreground">Reposted from</span>
         <AuthorName pubkey={originalEvent.pubkey} />
-        <Badge variant="outline" className="text-xs">{kindLabel(originalEvent.kind)}</Badge>
+        <Badge variant="outline" className="text-xs">{'Event'}</Badge>
         <span className="text-xs text-muted-foreground">
           {new Date(originalEvent.created_at * 1000).toLocaleDateString()}
         </span>
@@ -583,7 +583,7 @@ function EventPreview({ event, onClose, onFilterAuthor }: {
           {/* Author */}
           <div className="flex items-center gap-3">
             <AuthorName pubkey={displayPubkey} size="md" />
-            <Badge variant="outline">{kindLabel(event.kind)}</Badge>
+            <Badge variant="outline">{'Event'}</Badge>
             <span className="text-xs text-muted-foreground">
               {new Date(event.created_at * 1000).toLocaleString()}
             </span>
@@ -772,7 +772,7 @@ function EventBrowser({ stats, onFilterAuthor }: {
   const kindFilterLabel = selectedKinds.length === 0
     ? 'All kinds'
     : selectedKinds.length === 1
-      ? `${selectedKinds[0]} — ${kindLabel(selectedKinds[0])}`
+      ? `${selectedKinds[0]} — ${'Event'}`
       : `${selectedKinds.length} kinds selected`;
 
   // Build author filter options from stats byPubkey + knownPubkeys
@@ -838,7 +838,7 @@ function EventBrowser({ stats, onFilterAuthor }: {
                       >
                         <Checkbox checked={checked} />
                         <span className="text-sm flex-1">
-                          {k} — {kindLabel(k)}
+                          {k} — {'Event'}
                         </span>
                         <span className="text-xs text-muted-foreground font-mono">{count}</span>
                       </div>
