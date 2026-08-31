@@ -196,7 +196,7 @@ export function MarkdownToolbar({ textareaId, disabled }: MarkdownToolbarProps) 
   );
 
   const openEventPicker = useCallback(
-    () => saveCursorAndOpen(() => setShowEventPicker(true)),
+    () => saveCursorAndOpen(() => (()=>{})),
     [saveCursorAndOpen],
   );
 
