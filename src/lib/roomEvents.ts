@@ -9,9 +9,9 @@
 import type { NostrEvent } from '@nostrify/nostrify';
 
 /**
- * Parse a NIP-53 30312 room event to RoomDetails.
+ * Parse a NIP-53 30312 room event to any.
  */
-export function parseRoomEvent(event: NostrEvent): RoomDetails {
+export function parseRoomEvent(event: NostrEvent): any {
   const tags = event.tags || [];
 
   return {

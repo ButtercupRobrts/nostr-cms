@@ -34,12 +34,13 @@ interface SiteConfig {
   defaultRelay: string;
   publishRelays: string[];
   blossomRelays: string[];
-  adminRoles: Record<string, 'primary' | 'secondary'>;
+  adminRoles: Record<string, 'publisher' | 'user'>;
   tweakcnThemeUrl?: string;
   feedNpubs: string[];
   feedReadFromPublishRelays: boolean;
   sectionOrder?: string[];
   readOnlyAdminAccess: boolean;
+  autoHarvest24h?: boolean;
   updatedAt?: number;
 }
 
@@ -53,10 +54,10 @@ function UserRoleManager({
 }: {
   pubkey: string;
   name: string;
-  role?: 'primary' | 'secondary';
+  role?: 'publisher' | 'user';
   isMasterOfSession: boolean;
   isThisUserMaster: boolean;
-  onRoleChange: (role: 'primary' | 'secondary') => void;
+  onRoleChange: (role: 'publisher' | 'user') => void;
 }) {
   const { data: authorData } = useAuthor(pubkey);
   const metadata = authorData?.metadata;
@@ -72,8 +73,8 @@ function UserRoleManager({
           <div className="font-medium flex items-center gap-2">
             {name}
             {isThisUserMaster && <Badge variant="default" className="bg-purple-600 hover:bg-purple-700">Master User</Badge>}
-            {!isThisUserMaster && role === 'primary' && <Badge variant="default" className="bg-green-600 hover:bg-green-700">Primary Admin</Badge>}
-            {!isThisUserMaster && role === 'secondary' && <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">Secondary Admin</Badge>}
+            {!isThisUserMaster && role === 'publisher' && <Badge variant="default" className="bg-green-600 hover:bg-green-700">Publisher</Badge>}
+            {!isThisUserMaster && role === 'user' && <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">User</Badge>}
             {!isThisUserMaster && !role && <Badge variant="outline" className="text-muted-foreground">Unassigned</Badge>}
           </div>
           <div className="text-xs text-muted-foreground font-mono">{pubkey.slice(0, 8)}...{pubkey.slice(-8)}</div>
@@ -87,15 +88,15 @@ function UserRoleManager({
         </div>
       ) : isMasterOfSession && (
         <Select
-          value={role || 'secondary'}
-          onValueChange={(val) => onRoleChange(val as 'primary' | 'secondary')}
+          value={role || 'user'}
+          onValueChange={(val) => onRoleChange(val as 'publisher' | 'user')}
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Select role" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="primary">Primary Admin</SelectItem>
-            <SelectItem value="secondary">Secondary Admin</SelectItem>
+            <SelectItem value="publisher">Publisher</SelectItem>
+            <SelectItem value="user">User</SelectItem>
           </SelectContent>
         </Select>
       )}
@@ -141,6 +142,7 @@ export default function AdminSystemSettings() {
     feedReadFromPublishRelays: config.siteConfig?.feedReadFromPublishRelays ?? false,
     sectionOrder: config.siteConfig?.sectionOrder ?? ['navigation', 'basic', 'styling', 'hero', 'content', 'feed'],
     readOnlyAdminAccess: config.siteConfig?.readOnlyAdminAccess ?? false,
+    autoHarvest24h: config.siteConfig?.autoHarvest24h ?? false,
   }));
 
   const { data: nostrJsonData, isLoading: isLoadingUsers } = useNostrJsonUsers();
@@ -247,6 +249,9 @@ export default function AdminSystemSettings() {
 
         const readOnlyAdminAccess = eventTags.find(([name]) => name === 'read_only_admin_access')?.[1];
         if (readOnlyAdminAccess !== undefined) loadedConfig.readOnlyAdminAccess = readOnlyAdminAccess === 'true';
+
+        const autoHarvest24h = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
+        if (autoHarvest24h !== undefined) loadedConfig.autoHarvest24h = autoHarvest24h === 'true';
 
         const maxEvents = eventTags.find(([name]) => name === 'max_events')?.[1];
         if (maxEvents !== undefined) loadedConfig.maxEvents = parseInt(maxEvents);
@@ -358,6 +363,7 @@ export default function AdminSystemSettings() {
         ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
         ['section_order', JSON.stringify(siteConfig.sectionOrder || [])],
         ['read_only_admin_access', siteConfig.readOnlyAdminAccess.toString()],
+        ['auto_harvest_24h', (siteConfig.autoHarvest24h ?? false).toString()],
         ['updated_at', Math.floor(Date.now() / 1000).toString()],
       ];
 
@@ -465,14 +471,14 @@ export default function AdminSystemSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="space-y-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Admin Settings</h2>
           <p className="text-muted-foreground">
             Manage admin roles and relay configuration.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex justify-end gap-2 flex-wrap">
           <Button variant="destructive" onClick={handleResetToDefaults} disabled={!isMasterUser}>
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset to Defaults

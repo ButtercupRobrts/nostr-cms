@@ -113,7 +113,7 @@ export function CreateEventDialog({ open, onOpenChange, onSuccess }: CreateEvent
         }
 
         // Generate room ID from title
-        const roomId = generateRoomId(formData.title);
+        const roomId = // generateRoomId(formData.title);
 
         const relaysToUse = [...publishRelays, HARDCODED_RELAY, ...HIVETALK_RELAYS];
 
