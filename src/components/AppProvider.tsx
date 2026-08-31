@@ -14,9 +14,11 @@ interface AppProviderProps {
 }
 
 // Zod schema for RelayMetadata validation
+// Use z.string() instead of z.string().url() so a single bad URL doesn't
+// break the entire config parse. Invalid URLs are filtered out after parsing.
 const RelayMetadataSchema = z.object({
   relays: z.array(z.object({
-    url: z.string().url(),
+    url: z.string(),
     read: z.boolean(),
     write: z.boolean(),
   })),
@@ -46,15 +48,17 @@ const AppConfigSchema = z.object({
     maxBlogPosts: z.number().optional(),
     defaultRelay: z.string().optional(),
     publishRelays: z.array(z.string()).optional(),
-    adminRoles: z.record(z.string(), z.enum(['primary', 'secondary'])).optional(),
+    adminRoles: z.record(z.string(), z.enum(['publisher', 'user'])).optional(),
     tweakcnThemeUrl: z.string().optional(),
     sectionOrder: z.array(z.string()).optional(),
+    homepageSectionOrder: z.array(z.string()).optional(),
     feedNpubs: z.array(z.string()).optional(),
     feedReadFromPublishRelays: z.boolean().optional(),
     blossomRelays: z.array(z.string()).optional(),
     excludedBlossomRelays: z.array(z.string()).optional(),
     updatedAt: z.number().optional(),
     readOnlyAdminAccess: z.boolean().optional(),
+    autoHarvest24h: z.boolean().optional(),
   }).optional(),
   navigation: z.array(z.object({
     id: z.string(),
@@ -87,7 +91,32 @@ export function AppProvider(props: AppProviderProps) {
           parsed.navigation = (parsed.navigation as Record<string, unknown>).navigation;
         }
 
-        return AppConfigSchema.partial().parse(parsed);
+        // Data migration: adminRoles renamed from 'primary'/'secondary' to
+        // 'publisher'/'user'. Map any old values so existing localStorage
+        // and 30078 event data continues to work.
+        if (parsed?.siteConfig?.adminRoles && typeof parsed.siteConfig.adminRoles === 'object') {
+          const migrated: Record<string, string> = {};
+          for (const [pk, role] of Object.entries(parsed.siteConfig.adminRoles)) {
+            if (role === 'primary') migrated[pk] = 'publisher';
+            else if (role === 'secondary') migrated[pk] = 'user';
+            else migrated[pk] = role as string;
+          }
+          parsed.siteConfig.adminRoles = migrated;
+        }
+
+        const config = AppConfigSchema.partial().parse(parsed);
+
+        // Filter out relays with empty or invalid URLs
+        if (config.relayMetadata?.relays) {
+          config.relayMetadata = {
+            ...config.relayMetadata,
+            relays: config.relayMetadata.relays.filter(r => {
+              try { return !!r.url && !!new URL(r.url); } catch { return false; }
+            }),
+          };
+        }
+
+        return config;
       }
     }
   );
@@ -126,11 +155,11 @@ export function AppProvider(props: AppProviderProps) {
         merged.siteConfig.adminRoles = {};
       }
 
-      // INJECT MASTER PUBKEY: Ensure master user is always a primary admin
+      // INJECT MASTER PUBKEY: Ensure master user is always a publisher
       if (masterPubkey) {
         merged.siteConfig.adminRoles = {
           ...merged.siteConfig.adminRoles,
-          [masterPubkey]: 'primary'
+          [masterPubkey]: 'publisher'
         };
       }
     }
