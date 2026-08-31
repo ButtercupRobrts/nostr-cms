@@ -88,7 +88,7 @@ export default function MyActivityCard() {
       byKind[k] = v;
     }
   }
-  const categories = stats ? categorizeKinds(byKind) : [];
+  const categories = stats ? ({ categories: [] as any[] }) : [];
   const hasMedia = (stats && (stats.blossom.count > 0 || stats.embedded.images > 0 || stats.embedded.videos > 0));
 
   return (
@@ -162,7 +162,7 @@ export default function MyActivityCard() {
                         <div className="space-y-0.5">
                           {cat.kinds.map(({ kind, count }) => (
                             <div key={kind} className="flex justify-between gap-3 text-xs">
-                              <span>{kindLabel(kind)}</span>
+                              <span>{'Event'}</span>
                               <span className="font-mono text-muted-foreground">{count}</span>
                             </div>
                           ))}
