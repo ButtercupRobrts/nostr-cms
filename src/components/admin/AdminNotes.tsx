@@ -53,6 +53,7 @@ import {
 import { MediaSelectorDialog } from './MediaSelectorDialog';
 import { MentionTextarea } from '@/components/MentionTextarea';
 import { extractPTags } from '@/lib/mentions';
+import { ExpandableSearch } from './ExpandableSearch';
 import { SchedulePicker } from './SchedulePicker';
 import { format } from 'date-fns';
 import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useScheduledPosts';
@@ -908,6 +909,7 @@ export default function AdminNotes() {
                     className="min-h-[200px] resize-none"
                     required
                   />
+>>>>>>> a9a1188 (feat: add searchable user picker and expandable search)
                 </TabsContent>
 
                 <TabsContent value="preview" className="mt-2">
@@ -1135,6 +1137,15 @@ export default function AdminNotes() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+<<<<<<< HEAD
+=======
+              <ExpandableSearch
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search notes by content..."
+                open={searchOpen}
+                onOpenChange={setSearchOpen}
+              />
               <div className="flex gap-2 ml-auto">
                 <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
                   <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
