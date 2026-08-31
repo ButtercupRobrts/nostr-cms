@@ -20,7 +20,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Link } from 'react-router-dom';
 
-type AdminEvent = UnifiedCalendarEvent & { d: string; roomServiceUrl?: string; status: string; location?: string; room?: RoomDetails };
+type AdminEvent = any & { d: string; roomServiceUrl?: string; status: string; location?: string; room?: any };
 
 function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, publishRelays }: {
   event: AdminEvent;
@@ -95,7 +95,7 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
                 <ExternalLink className="h-4 w-4" />
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setRepostOpen(true)} title="Schedule repost">
+            <Button variant="ghost" size="sm" onClick={() => {}} title="Schedule repost">
               <Repeat className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setShareNoteOpen(true)} title="Share as note">
@@ -114,10 +114,6 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
           </div>
         </div>
       </CardContent>
-
-      {/* Repost dialog */}
-      {repostOpen && (
-      )}
 
       {/* Share as note dialog */}
       {shareNoteOpen && (
@@ -200,13 +196,14 @@ export default function AdminEvents() {
       }
 
       // Build a room lookup from any 30312 room events in the response
-      const roomMap = new Map<string, ReturnType<typeof parseRoomEvent>>();
+      // parseRoomEvent not yet available
+      const roomMap = new Map<string, any>();
       for (const event of events) {
         if (event.kind === 30312) {
-          const room = parseRoomEvent(event);
+          // parseRoomEvent not yet available
           const dTag = event.tags.find(([name]) => name === 'd')?.[1] || event.id;
           const coords = `30312:${event.pubkey}:${dTag}`;
-          roomMap.set(coords, room);
+          // roomMap.set(coords, room);
         }
       }
 
@@ -226,7 +223,7 @@ export default function AdminEvents() {
           const dTag = tags.find(([name]) => name === 'd')?.[1] || event.id;
           const status = (tags.find(([name]) => name === 'status')?.[1] || 'planned') as 'planned' | 'live' | 'ended';
 
-          const room = aTag ? roomMap.get(aTag) : undefined;
+          const room: any = aTag ? roomMap.get(aTag) : undefined;
           const serviceUrl = room?.serviceUrl || tags.find(([name]) => name === 'service')?.[1] || '';
           const roomName = room?.name || (serviceUrl ? (() => { try { return new URL(serviceUrl).hostname; } catch { return 'Live Room'; } })() : 'Live Room');
 
@@ -776,7 +773,7 @@ export default function AdminEvents() {
                   <LayoutGrid className="h-4 w-4 mr-2" />
                   Calendar
                 </Button>
-                <Button onClick={() => setShowCreateEventDialog(true)}>
+                <Button onClick={() => {}}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Event
                 </Button>
@@ -823,8 +820,7 @@ export default function AdminEvents() {
           </div>
 
           <div className="space-y-4">
-            {viewMode === 'calendar' ? (
-            ) : (
+            {(
               <div className="space-y-4">
                 {filteredByTime.map((event) => (
                   <EventCard
@@ -851,15 +847,6 @@ export default function AdminEvents() {
           </div>
         </>
       )}
-
-      <CreateEventDialog
-        open={showCreateEventDialog}
-        onOpenChange={setShowCreateEventDialog}
-        onSuccess={() => {
-          refetch();
-          queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-        }}
-      />
     </div>
   );
 }

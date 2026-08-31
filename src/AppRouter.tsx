@@ -25,6 +25,7 @@ import AdminFormsPage from "./pages/admin/AdminFormsPage";
 import AdminSyncPage from "./pages/admin/AdminSyncPage";
 import AdminRelayAccessPage from "./pages/admin/AdminRelayAccessPage";
 import AdminExplorerPage from "./pages/admin/AdminExplorerPage";
+import AdminFollowBackupPage from "./pages/admin/AdminFollowBackupPage";
 
 // Public pages
 import EventsPage from "./pages/EventsPage";

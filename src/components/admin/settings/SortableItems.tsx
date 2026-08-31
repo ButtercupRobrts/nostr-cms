@@ -199,7 +199,7 @@ export function SortableHomepageItem({ id, label, description, isPage, path, con
             <Eye className="h-4 w-4" />
           </Button>
           <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-            <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col" hideCloseButton>
+            <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
               <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-0">
                 <DialogTitle className="truncate">{label}</DialogTitle>
                 <DialogClose asChild>

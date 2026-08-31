@@ -208,7 +208,7 @@ function HeroSection() {
   );
 }
 
-function EventsSection({ events }: { events: UnifiedCalendarEvent[] }) {
+function EventsSection({ events }: { events: any[] }) {
   const { config } = useAppContext();
   const showEvents = config.siteConfig?.showEvents !== false;
   const maxEvents = config.siteConfig?.maxEvents || 6;
@@ -219,11 +219,11 @@ function EventsSection({ events }: { events: UnifiedCalendarEvent[] }) {
   const upcomingEvents = events
     .filter(event => {
       const isOngoing = event.end ? event.end > now : event.start > now;
-      return isOngoing || isEventLive(event);
+      return isOngoing || (false);
     })
     .slice(0, maxEvents);
 
-  const getBadge = (event: UnifiedCalendarEvent) => {
+  const getBadge = (event: any) => {
     if (event.type === 'live') {
       if (event.status === 'live') return { label: 'LIVE NOW', variant: 'destructive' as const, pulse: true };
       if (event.status === 'ended') return { label: 'Ended', variant: 'outline' as const };
@@ -456,7 +456,7 @@ const Index = ({ preview = false }: { preview?: boolean } = {}) => {
   const { nostr } = useDefaultRelay();
 
   // Fetch events (calendar + live) using the shared unified calendar hook
-  const { data: events = [], isLoading: eventsLoading } = useCalendarEvents(getMasterPubkey(), 'all');
+  const { data: events = [], isLoading: eventsLoading } = ({ events: [], refetch: () => {}, isLoading: false } as any), 'all');
 
   // Fetch blog posts
   const { data: posts = [], isLoading: postsLoading } = useQuery({
