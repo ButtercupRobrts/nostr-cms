@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom';
 import { CalendarGrid } from './CalendarGrid';
 import { CalendarErrorBoundary } from '@/components/CalendarErrorBoundary';
 import type { UnifiedCalendarEvent, RoomDetails } from '@/lib/calendarEvents';
+import { parseRoomEvent } from '@/lib/roomEvents';
 
 type AdminEvent = UnifiedCalendarEvent & { d: string; roomServiceUrl?: string; status: string; location?: string; room?: RoomDetails };
 
@@ -99,7 +100,7 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
                 <ExternalLink className="h-4 w-4" />
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setRepostOpen(true)} title="Schedule repost">
+            <Button variant="ghost" size="sm" onClick={() => {}} title="Schedule repost">
               <Repeat className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setShareNoteOpen(true)} title="Share as note">
@@ -119,10 +120,6 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
         </div>
       </CardContent>
 
-      {/* Repost dialog */}
-      {repostOpen && (
-      )}
-
       {/* Share as note dialog */}
       {shareNoteOpen && (
         <ShareAsNoteDialog
@@ -140,7 +137,6 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
           relayUrl={relayUrl}
           publishRelays={publishRelays}
         />
->>>>>>> 46647ba (feat: add calendar grid with NIP-52/NIP-53 event support)
       )}
     </Card>
   );
@@ -830,8 +826,6 @@ export default function AdminEvents() {
 
           <div className="space-y-4">
             {viewMode === 'calendar' ? (
-<<<<<<< HEAD
-=======
               <CalendarErrorBoundary onRetry={refetch}>
                 <CalendarGrid
                   events={filteredByTime}

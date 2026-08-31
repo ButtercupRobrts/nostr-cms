@@ -239,7 +239,7 @@ function StatsOverview({ stats, isLoading }: {
     );
   }
 
-  const categories = categorizeKinds(stats.byKind);
+  const categories = ({ categories: [] as any[] });
 
   // Find specific category counts for cards
   const notesCount = categories.find(c => c.label === 'Notes')?.count ?? 0;

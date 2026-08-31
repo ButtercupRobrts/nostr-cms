@@ -68,7 +68,7 @@ export function useCalendarEvents(
       // Normalize each event and deduplicate by ID
       const eventMap = new Map<string, UnifiedCalendarEvent>();
 
-      const fetchRoom = (coords: string) => fetchRoomDetails(coords, poolNostr);
+      const fetchRoom = (coords: string) => // fetchRoomDetails(coords, poolNostr);
 
       for (const event of filteredEvents) {
         try {

@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { getMasterPubkey } from '@/lib/relay';
 import { normalizeEvent, type UnifiedCalendarEvent } from '@/lib/calendarEvents';
+import { fetchRoomDetails } from '@/hooks/useRooms';
 import { useAppContext } from '@/hooks/useAppContext';
 import { ArrowLeft, Calendar, MapPin, Clock, RefreshCw, Video } from 'lucide-react';
 import { AuthorInfo } from '@/components/AuthorInfo';

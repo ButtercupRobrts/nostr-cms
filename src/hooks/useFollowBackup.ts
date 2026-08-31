@@ -410,7 +410,7 @@ export function useEncryptionProbe() {
 export function useCreateBackup() {
   const { user } = useCurrentUser();
   const { nostr, defaultRelayUrl } = useDefaultRelay();
-  const blossomServers = useBlossomRelays();
+  const blossomServers = ([] as string[]);
   const publishEvent = useNostrPublish();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -459,7 +459,7 @@ export function useCreateBackup() {
 export function useRestoreBackup() {
   const { user } = useCurrentUser();
   const { nostr, publishRelays, defaultRelayUrl } = useDefaultRelay();
-  const blossomServers = useBlossomRelays();
+  const blossomServers = ([] as string[]);
   const publishEvent = useNostrPublish();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -521,7 +521,7 @@ export function useRestoreBackup() {
 export function useDeleteBackup() {
   const { user } = useCurrentUser();
   const { defaultRelayUrl } = useDefaultRelay();
-  const blossomServers = useBlossomRelays();
+  const blossomServers = ([] as string[]);
   const publishEvent = useNostrPublish();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -669,7 +669,7 @@ export function useParseImportFile() {
 export function usePublishImport() {
   const { user } = useCurrentUser();
   const { nostr, publishRelays, defaultRelayUrl } = useDefaultRelay();
-  const blossomServers = useBlossomRelays();
+  const blossomServers = ([] as string[]);
   const publishEvent = useNostrPublish();
   const queryClient = useQueryClient();
   const { toast } = useToast();
