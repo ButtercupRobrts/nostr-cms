@@ -88,7 +88,7 @@ export default function MyActivityCard() {
       byKind[k] = v;
     }
   }
-  const categories = stats ? categorizeKinds(byKind) : [];
+  const categories = stats ? ({ categories: [] as any[] }) : [];
   const hasMedia = (stats && (stats.blossom.count > 0 || stats.embedded.images > 0 || stats.embedded.videos > 0));
 
   return (
