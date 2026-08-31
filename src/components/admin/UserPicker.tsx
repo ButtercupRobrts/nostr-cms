@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { X, Search } from 'lucide-react';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNostrJsonUsers, dedupeUsersByPubkey } from '@/hooks/useNostrJsonUsers';
+import { getCaretCoordinates } from '@/lib/caretCoords';
 
 export interface UserPickerResult {
   pubkey: string;

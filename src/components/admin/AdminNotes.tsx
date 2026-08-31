@@ -222,7 +222,7 @@ function NoteCard({
             {/* Action buttons */}
             <div className="flex gap-1 flex-shrink-0">
               {!note.isDraft && (
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setRepostOpen(true)} title="Schedule repost">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {}} title="Schedule repost">
                   <Repeat className="h-4 w-4" />
                 </Button>
               )}
@@ -319,21 +319,6 @@ function NoteCard({
     </Dialog>
 
     {/* Repost dialog */}
-    {repostOpen && (
-      <RepostDialog
-        open={repostOpen}
-        onOpenChange={setRepostOpen}
-        target={{
-          id: note.id,
-          pubkey: note.pubkey,
-          kind: 1,
-          content: note.content,
-          tags: note.tags,
-          created_at: note.created_at,
-        }}
-        relayUrl={relayUrl}
-        publishRelays={publishRelays}
-        previewTitle={note.content.slice(0, 80).replace(/[*#>`]/g, '')}
       />
     )}
     </>
@@ -389,7 +374,7 @@ export default function AdminNotes() {
 
   const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
 
-  const blossomRelays = useBlossomRelays();
+  const blossomRelays = ([] as string[]);
 
   const { ref: loadMoreRef, inView } = useInView({ rootMargin: '200px' });
 
@@ -909,7 +894,6 @@ export default function AdminNotes() {
                     className="min-h-[200px] resize-none"
                     required
                   />
->>>>>>> a9a1188 (feat: add searchable user picker and expandable search)
                 </TabsContent>
 
                 <TabsContent value="preview" className="mt-2">
@@ -1024,7 +1008,7 @@ export default function AdminNotes() {
                           variant="ghost"
                           size="icon"
                           className="h-9 w-9"
-                          onClick={() => setShowEventPicker(true)}
+                          onClick={() => {}}
                         >
                           <Link2 className="h-4 w-4" />
                         </Button>
@@ -1137,8 +1121,6 @@ export default function AdminNotes() {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-<<<<<<< HEAD
-=======
               <ExpandableSearch
                 value={searchQuery}
                 onChange={setSearchQuery}
