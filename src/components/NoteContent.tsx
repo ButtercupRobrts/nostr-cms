@@ -1,15 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { type NostrEvent } from '@nostrify/nostrify';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
-import { useAuthor } from '@/hooks/useAuthor';
 import { useAppContext } from '@/hooks/useAppContext';
-import { genUserName } from '@/lib/genUserName';
 import { cn } from '@/lib/utils';
+import { NostrEventEmbed } from './NostrEventEmbed';
+import { NostrMention } from './NostrMention';
 
 interface NoteContentProps {
   event: NostrEvent;
   className?: string;
+  centerMedia?: boolean;
+  /** When false, embedded event previews show full content instead of truncated snippets. */
+  truncateEmbeds?: boolean;
 }
 
 function isImageUrl(url: string) {
@@ -45,6 +48,8 @@ function isVideoUrl(url: string) {
 export function NoteContent({
   event,
   className,
+  centerMedia = false,
+  truncateEmbeds = true,
 }: NoteContentProps) {
   const { config } = useAppContext();
   const gateway = config.siteConfig?.nip19Gateway || 'https://nostr.at';
@@ -90,13 +95,13 @@ export function NoteContent({
               href={cleanUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="block my-2"
+              className={cn("block my-2", centerMedia && "mx-auto w-fit")}
             >
               <img
                 src={cleanUrl}
                 alt=""
                 referrerPolicy="no-referrer"
-                className="max-w-full h-auto rounded-lg border shadow-sm hover:opacity-95 transition-opacity"
+                className="max-w-full max-h-[400px] object-contain rounded-lg border shadow-sm hover:opacity-95 transition-opacity"
                 onError={(e) => {
                   // Fallback if image fails to load
                   (e.target as HTMLImageElement).style.display = 'none';
@@ -106,15 +111,11 @@ export function NoteContent({
           );
         } else if (isVideoUrl(cleanUrl)) {
           parts.push(
-            <div key={`video-${keyCounter++}`} className="my-2 max-w-full">
-              <video
-                src={cleanUrl}
-                controls
-                playsInline
-                preload="metadata"
-                className="w-full rounded-lg border shadow-sm"
-              />
-            </div>
+            <SafeVideo
+              key={`video-${keyCounter++}`}
+              src={cleanUrl}
+              centerMedia={centerMedia}
+            />
           );
         } else {
           parts.push(
@@ -135,28 +136,26 @@ export function NoteContent({
           const nostrId = `${nostrPrefix}${nostrData}`;
           const decoded = nip19.decode(nostrId);
 
-          if (decoded.type === 'npub') {
-            const pubkey = decoded.data;
-            const npub = nip19.npubEncode(pubkey);
+          if (decoded.type === 'npub' || decoded.type === 'nprofile') {
             parts.push(
               <NostrMention
                 key={`mention-${keyCounter++}`}
-                pubkey={pubkey}
-                href={`${cleanGateway}/${npub}`}
+                identifier={nostrId}
+                gateway={cleanGateway}
               />
             );
-          } else if (decoded.type === 'nprofile') {
-            const pubkey = decoded.data.pubkey;
-            const nprofile = nip19.nprofileEncode(decoded.data);
+          } else if (decoded.type === 'note' || decoded.type === 'nevent' || decoded.type === 'naddr') {
+            // Render embedded preview for note1, nevent1, naddr1 references
             parts.push(
-              <NostrMention
-                key={`mention-${keyCounter++}`}
-                pubkey={pubkey}
-                href={`${cleanGateway}/${nprofile}`}
+              <NostrEventEmbed
+                key={`embed-${keyCounter++}`}
+                identifier={nostrId}
+                gateway={cleanGateway}
+                truncate={truncateEmbeds}
               />
             );
           } else {
-            // For other types, just show as a link
+            // For other types (nrelay, etc.), just show as a link
             parts.push(
               <a
                 key={`nostr-${keyCounter++}`}
@@ -201,7 +200,7 @@ export function NoteContent({
     }
 
     return parts;
-  }, [event, cleanGateway]);
+  }, [event, cleanGateway, centerMedia, truncateEmbeds]);
 
   return (
     <div className={cn("whitespace-pre-wrap break-words", className)}>
@@ -210,25 +209,34 @@ export function NoteContent({
   );
 }
 
-// Helper component to display user mentions
-function NostrMention({ pubkey, href }: { pubkey: string; href: string }) {
-  const author = useAuthor(pubkey);
-  const hasRealName = !!author.data?.metadata?.name;
-  const displayName = author.data?.metadata?.name ?? genUserName(pubkey);
+// Helper component to render a video with a fallback link if the browser
+// cannot decode the source (codec/network/CORS error).
+function SafeVideo({ src, centerMedia = false }: { src: string; centerMedia?: boolean }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-500 hover:underline break-all"
+      >
+        {src}
+      </a>
+    );
+  }
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={cn(
-        "font-medium hover:underline",
-        hasRealName
-          ? "text-blue-500"
-          : "text-gray-500 hover:text-gray-700"
-      )}
-    >
-      @{displayName}
-    </a>
+    <div className={cn("my-2 max-w-full", centerMedia && "mx-auto w-fit")}>
+      <video
+        src={src}
+        controls
+        playsInline
+        preload="metadata"
+        className="max-w-full max-h-[400px] rounded-lg border shadow-sm"
+        onError={() => setHasError(true)}
+      />
+    </div>
   );
 }
