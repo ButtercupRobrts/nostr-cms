@@ -15,10 +15,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Edit, Trash2, Calendar, MapPin, Share2, ExternalLink, Library, Filter, RefreshCw, Repeat, Clock, MessageSquare, List, LayoutGrid } from 'lucide-react';
 import { MediaSelectorDialog } from './MediaSelectorDialog';
 import { ShareAsNoteDialog } from './ShareAsNoteDialog';
+import { CreateEventDialog } from './CreateEventDialog';
 import { AuthorInfo } from '@/components/AuthorInfo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { Link } from 'react-router-dom';
+import { CalendarGrid } from './CalendarGrid';
+import { CalendarErrorBoundary } from '@/components/CalendarErrorBoundary';
+import type { UnifiedCalendarEvent, RoomDetails } from '@/lib/calendarEvents';
 
 type AdminEvent = UnifiedCalendarEvent & { d: string; roomServiceUrl?: string; status: string; location?: string; room?: RoomDetails };
 
@@ -136,6 +140,7 @@ function EventCard({ event, user, usernameSearch, onEdit, onDelete, relayUrl, pu
           relayUrl={relayUrl}
           publishRelays={publishRelays}
         />
+>>>>>>> 46647ba (feat: add calendar grid with NIP-52/NIP-53 event support)
       )}
     </Card>
   );
@@ -168,6 +173,7 @@ export default function AdminEvents() {
     status: 'confirmed',
   });
   const [showMediaSelector, setShowMediaSelector] = useState(false);
+  const [showCreateEventDialog, setShowCreateEventDialog] = useState(false);
 
   // Initialize selected relays
   useEffect(() => {
@@ -824,6 +830,15 @@ export default function AdminEvents() {
 
           <div className="space-y-4">
             {viewMode === 'calendar' ? (
+<<<<<<< HEAD
+=======
+              <CalendarErrorBoundary onRetry={refetch}>
+                <CalendarGrid
+                  events={filteredByTime}
+                  viewMode="month"
+                  onEventClick={(event) => handleEdit(event as AdminEvent)}
+                />
+              </CalendarErrorBoundary>
             ) : (
               <div className="space-y-4">
                 {filteredByTime.map((event) => (
