@@ -57,7 +57,7 @@ export function HomepagePreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[100vw] w-full h-[100dvh] max-h-[100dvh] top-0 left-0 right-0 bottom-0 translate-x-0 translate-y-0 p-0 rounded-none border-0 flex flex-col overflow-hidden" hideCloseButton>
+      <DialogContent className="max-w-[100vw] w-full h-[100dvh] max-h-[100dvh] top-0 left-0 right-0 bottom-0 translate-x-0 translate-y-0 p-0 rounded-none border-0 flex flex-col overflow-hidden">
         <DialogTitle className="sr-only">Homepage Preview</DialogTitle>
         {/* Preview header bar with explicit close button */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b bg-background/95 backdrop-blur z-10" style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top))' }}>

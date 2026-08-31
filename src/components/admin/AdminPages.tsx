@@ -108,7 +108,7 @@ function PageCard({ page, user, onEdit, onDelete }: {
 
       {/* Preview dialog — renders page content inline, no new tab */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col" hideCloseButton>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-0">
             <DialogTitle className="truncate">{title}</DialogTitle>
             <DialogClose asChild>
