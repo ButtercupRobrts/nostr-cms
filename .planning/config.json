@@ -1,0 +1,29 @@
+{
+  "version": "1.12.0",
+  "model_profile": "balanced",
+  "workflow": {
+    "discuss_mode": "interview",
+    "nyquist_validation": true,
+    "ui_phase": false,
+    "context_coverage_gate": true,
+    "research": true,
+    "plan_check": true,
+    "verifier": true
+  },
+  "parallelization": {
+    "enabled": true
+  },
+  "git": {
+    "branching_strategy": "phase",
+    "branch_prefix": "upstream/",
+    "base_branch": "main",
+    "commit_docs": true
+  },
+  "project": {
+    "type": "brownfield",
+    "source_of_truth": "buttercup.exe.xyz deployed dist (Aug 7, 2026)",
+    "upstream_repo": "bitkarrot/nostr-cms",
+    "fork_repo": "ButtercupRobrts/nostr-cms",
+    "access_level": "external-contributor"
+  }
+}
