@@ -35,6 +35,7 @@ import {
   RefreshCw,
   UserRoundCog,
   Database,
+  Users,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -108,6 +109,7 @@ export default function AdminLayout() {
     { name: 'Feed Settings', href: '/admin/feed', icon: Rss },
     ...(canManageRelayAccess ? [{ name: 'Manage Relay Access', href: '/admin/relay-access', icon: UserRoundCog }] : []),
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
+    { name: 'Follow Backup', href: '/admin/follow-backup', icon: Users },
     ...(canAccessSettings ? [{ name: 'Admin Settings', href: '/admin/system-settings', icon: Shield }] : []),
     { name: 'Help', href: '/admin/help', icon: HelpCircle },
   ];
