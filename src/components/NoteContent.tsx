@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { type NostrEvent } from '@nostrify/nostrify';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
@@ -96,7 +96,7 @@ export function NoteContent({
                 src={cleanUrl}
                 alt=""
                 referrerPolicy="no-referrer"
-                className="max-w-full h-auto rounded-lg border shadow-sm hover:opacity-95 transition-opacity"
+                className="max-w-full max-h-[400px] object-contain rounded-lg border shadow-sm hover:opacity-95 transition-opacity"
                 onError={(e) => {
                   // Fallback if image fails to load
                   (e.target as HTMLImageElement).style.display = 'none';
@@ -106,15 +106,10 @@ export function NoteContent({
           );
         } else if (isVideoUrl(cleanUrl)) {
           parts.push(
-            <div key={`video-${keyCounter++}`} className="my-2 max-w-full">
-              <video
-                src={cleanUrl}
-                controls
-                playsInline
-                preload="metadata"
-                className="w-full rounded-lg border shadow-sm"
-              />
-            </div>
+            <SafeVideo
+              key={`video-${keyCounter++}`}
+              src={cleanUrl}
+            />
           );
         } else {
           parts.push(
@@ -206,6 +201,38 @@ export function NoteContent({
   return (
     <div className={cn("whitespace-pre-wrap break-words", className)}>
       {content.length > 0 ? content : event.content}
+    </div>
+  );
+}
+
+// Helper component to render a video with a fallback link if the browser
+// cannot decode the source (codec/network/CORS error).
+function SafeVideo({ src }: { src: string }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-500 hover:underline break-all"
+      >
+        {src}
+      </a>
+    );
+  }
+
+  return (
+    <div className="my-2 max-w-full">
+      <video
+        src={src}
+        controls
+        playsInline
+        preload="metadata"
+        className="max-w-full max-h-[400px] rounded-lg border shadow-sm"
+        onError={() => setHasError(true)}
+      />
     </div>
   );
 }
