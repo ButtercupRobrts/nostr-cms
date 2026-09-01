@@ -18,6 +18,10 @@ export async function queryWithNip65Fanout(
   nip65RelayUrls: string[],
   signal: AbortSignal,
 ): Promise<NostrEvent[]> {
+  // Start all queries in parallel. The default relay (nostr.query) is
+  // the primary source — external NIP-65 relays supplement with additional
+  // data. We wait for all to settle, but the signal timeout ensures slow
+  // relays don't block the response for too long.
   const results = await Promise.allSettled([
     nostr.query(filters, { signal }),
     ...nip65RelayUrls.map((url: string) => {
