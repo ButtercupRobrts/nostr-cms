@@ -937,13 +937,31 @@ function UploadMediaSection() {
             fileToUpload = result.file;
             const savings = ((1 - result.processedSize / result.originalSize) * 100).toFixed(0);
             processedInfo = ` → WebP ${formatBytes(result.processedSize)} (-${savings}%)`;
+            if (!result.stripped) {
+              // GIF passthrough — metadata not stripped
+              toast({
+                title: 'Metadata not stripped',
+                description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+                variant: 'destructive',
+              });
+            }
           } else {
             // Strip metadata only (always on for images)
-            fileToUpload = await stripImageMetadata(file);
-            if (fileToUpload.size < file.size) {
-              processedInfo = ` (metadata stripped: ${formatBytes(file.size)} → ${formatBytes(fileToUpload.size)})`;
-            } else {
-              processedInfo = ' (metadata stripped)';
+            const result = await stripImageMetadata(file);
+            fileToUpload = result.file;
+            if (result.stripped) {
+              if (fileToUpload.size < file.size) {
+                processedInfo = ` (metadata stripped: ${formatBytes(file.size)} → ${formatBytes(fileToUpload.size)})`;
+              } else {
+                processedInfo = ' (metadata stripped)';
+              }
+            } else if (result.reason === 'gif') {
+              processedInfo = ' (GIF — metadata not stripped)';
+              toast({
+                title: 'Metadata not stripped',
+                description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+                variant: 'destructive',
+              });
             }
           }
         }
@@ -1154,7 +1172,7 @@ function UploadMediaSection() {
     <Card>
       <CardHeader>
         <CardTitle>Upload Media</CardTitle>
-        <CardDescription>Upload images or videos. Image metadata is always stripped on upload.</CardDescription>
+        <CardDescription>Upload images or videos. Image metadata is stripped on upload (except GIFs, which cannot be processed).</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Processing options */}
@@ -1169,7 +1187,7 @@ function UploadMediaSection() {
             />
             <div>
               <label htmlFor="compress-images" className="text-sm font-medium cursor-pointer">Compress images (WebP)</label>
-              <p className="text-xs text-muted-foreground">Re-encode to WebP for ~30% smaller files. Metadata is always stripped regardless.</p>
+              <p className="text-xs text-muted-foreground">Re-encode to WebP for ~30% smaller files. Metadata is stripped (except GIFs).</p>
             </div>
           </div>
 
@@ -1202,7 +1220,7 @@ function UploadMediaSection() {
           )}
 
           <p className="text-[10px] text-muted-foreground border-t pt-3">
-            Image metadata (EXIF, GPS, camera info) is always stripped on upload. Videos are streamed to the server for processing — choose "No transcoding" to preserve original quality, or pick a quality preset to transcode to MP4 (H.264/AAC) with metadata stripped.
+            Image metadata (EXIF, GPS, camera info) is stripped on upload via canvas re-encode. GIFs cannot be processed and will retain metadata — you will be warned. Videos are streamed to the server for processing — choose "No transcoding" to preserve original quality, or pick a quality preset to transcode to MP4 (H.264/AAC) with metadata stripped.
           </p>
 
           {/* Video quality settings — always visible for video uploads */}

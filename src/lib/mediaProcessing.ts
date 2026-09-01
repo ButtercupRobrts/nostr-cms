@@ -22,6 +22,14 @@ export interface ProcessedImage {
   stripped: boolean; // metadata was stripped
 }
 
+/** Result of stripImageMetadata. */
+export interface StrippedImage {
+  file: File;
+  stripped: boolean;
+  /** Why metadata was not stripped, if applicable. */
+  reason?: 'gif' | 'canvas-failed';
+}
+
 export interface VideoProcessResult {
   sha256: string;
   url: string;
@@ -79,57 +87,53 @@ function hasTransparency(img: HTMLImageElement): boolean {
  * Strip metadata from an image by re-encoding it through a canvas.
  * Canvas does not preserve EXIF, GPS, ICC profiles, or camera data.
  * The output format matches the input format at high quality (visually
- * lossless). GIFs are returned as-is (canvas can't handle animated GIFs).
+ * lossless).
+ *
+ * GIFs cannot be processed through canvas (animation would be lost), so
+ * they are returned as-is with `stripped: false, reason: 'gif'`. The
+ * caller should warn the user that metadata is not stripped for GIFs.
+ *
+ * If canvas processing fails entirely, throws an Error so the caller can
+ * inform the user and abort the upload — never silently upload a file
+ * with private metadata intact.
  *
  * This is ALWAYS applied to every uploaded image, regardless of whether
  * compression is enabled.
  */
-export async function stripImageMetadata(file: File): Promise<File> {
-  // GIFs: canvas can't preserve animation, pass through as-is
+export async function stripImageMetadata(file: File): Promise<StrippedImage> {
+  // GIFs: canvas can't preserve animation — return as-is, caller must warn
   if (file.type === 'image/gif') {
-    return file;
+    return { file, stripped: false, reason: 'gif' };
   }
 
-  try {
-    const img = await loadImage(file);
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return file;
+  const img = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas context not available — cannot strip metadata');
 
-    ctx.drawImage(img, 0, 0);
+  ctx.drawImage(img, 0, 0);
 
-    // Re-encode in original format at high quality (visually lossless)
-    // PNG is lossless so quality doesn't apply; JPEG at 0.95 is near-lossless
-    const outputType = file.type === 'image/png' ? 'image/png'
-      : file.type === 'image/webp' ? 'image/webp'
-      : 'image/jpeg'; // default to JPEG for JPEG, BMP, etc.
+  // Re-encode in original format at high quality (visually lossless)
+  // PNG is lossless so quality doesn't apply; JPEG at 0.95 is near-lossless
+  const outputType = file.type === 'image/png' ? 'image/png'
+    : file.type === 'image/webp' ? 'image/webp'
+    : 'image/jpeg'; // default to JPEG for JPEG, BMP, etc.
 
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, outputType, 0.95);
-    });
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, outputType, 0.95);
+  });
 
-    if (!blob || blob.size >= file.size) {
-      // If re-encoding didn't help (or made it bigger), keep original
-      // — metadata is still stripped because we went through canvas,
-      // but only if the result is smaller. Otherwise the original is
-      // already optimal and we accept the metadata trade-off for GIFs
-      // and already-clean images.
-      // Actually, we should still return the canvas version to strip
-      // metadata even if it's slightly larger. But if it's much larger
-      // (>10%), keep original — the metadata wasn't significant enough.
-      if (blob && blob.size <= file.size * 1.1) {
-        return new File([blob], replaceExtension(file.name, outputType), { type: outputType });
-      }
-      return file;
-    }
+  if (!blob) throw new Error('Canvas re-encode failed — cannot strip metadata');
 
-    return new File([blob], replaceExtension(file.name, outputType), { type: outputType });
-  } catch {
-    // If canvas processing fails, return original (better than blocking upload)
-    return file;
-  }
+  // Always return the canvas version, even if larger. The whole point is
+  // to strip metadata — a size increase is an acceptable trade-off for
+  // privacy. The canvas output has no EXIF/GPS/ICC data.
+  return {
+    file: new File([blob], replaceExtension(file.name, outputType), { type: outputType }),
+    stripped: true,
+  };
 }
 
 /**
