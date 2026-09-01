@@ -1096,10 +1096,12 @@ function UploadMediaSection() {
   const handleAcceptVideo = async () => {
     if (!videoResult || !pendingVideo || !user || !blossomRelays[0]) return;
 
-    // Delete the original blob — only if it exists (streaming transcode
-    // path doesn't store an original, so pendingVideo.sha256 is the
-    // processed hash and there's nothing to delete).
-    if (videoResult.original_sha && videoResult.original_sha !== pendingVideo.sha256) {
+    // Delete the original blob if one exists.
+    // - Stored-blob path: pendingVideo.sha256 is the original's hash,
+    //   videoResult.original_sha is the same hash. We must delete it.
+    // - Streaming path: videoResult.original_sha is "" — no original
+    //   was stored, so there's nothing to delete.
+    if (videoResult.original_sha) {
       try {
         const now = Math.floor(Date.now() / 1000);
         const authEvent = await user.signer.signEvent({
@@ -1114,12 +1116,26 @@ function UploadMediaSection() {
         });
         const authBase64 = toBase64(JSON.stringify(authEvent));
 
-        await fetch(`${blossomRelays[0]}/${pendingVideo.sha256}`, {
+        const deleteRes = await fetch(`${blossomRelays[0]}/${pendingVideo.sha256}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Nostr ${authBase64}` },
         });
+
+        if (!deleteRes.ok) {
+          toast({
+            title: 'Could not delete original',
+            description: `${pendingVideo.originalName}: the processed video was saved, but the original could not be deleted (HTTP ${deleteRes.status}). You can retry or delete it manually.`,
+            variant: 'destructive',
+          });
+          return; // retain pendingVideo + videoResult for retry
+        }
       } catch (e) {
-        console.warn('Failed to delete original video:', e);
+        toast({
+          title: 'Could not delete original',
+          description: `${pendingVideo.originalName}: ${String(e)}. The processed video was saved. You can retry or delete the original manually.`,
+          variant: 'destructive',
+        });
+        return; // retain pendingVideo + videoResult for retry
       }
     }
 
@@ -1552,6 +1568,7 @@ function HarvestMediaSection() {
   const queryClient = useQueryClient();
   const { nostr } = useNostr();
   const { mutateAsync: publishEvent } = useNostrPublish();
+  const { isMaster } = useAdminAuth(user?.pubkey);
 
   // Source relay selection (mirrors sync page pattern)
   const [sourceRelay, setSourceRelay] = useState<string>('');
@@ -1611,8 +1628,16 @@ function HarvestMediaSection() {
   /** Toggle the auto-harvest flag in the kind 30078 site-config event. */
   const handleToggleAutoHarvest = async (enable: boolean) => {
     if (!user) return;
+    const masterPk = getMasterPubkey();
+    if (masterPk && user.pubkey !== masterPk) {
+      toast({
+        title: 'Permission denied',
+        description: 'Only the master account can change the auto-backup setting.',
+        variant: 'destructive',
+      });
+      return;
+    }
     try {
-      const masterPk = getMasterPubkey();
       const scopedDTag = getSiteConfigDTag();
       const signal = AbortSignal.timeout(5000);
       const events = await nostr.query([
@@ -1687,6 +1712,7 @@ function HarvestMediaSection() {
       // Paginate through all events in the 24h window (no author filter —
       // scan everything on the relay so all members' media is backed up)
       const allEvents: NostrEvent[] = [];
+      const seenIds = new Set<string>();
       const PAGE_SIZE = 500;
       let untilCursor: number | undefined = now;
       let lastCount = 0;
@@ -1696,14 +1722,19 @@ function HarvestMediaSection() {
         if (untilCursor !== undefined) filter.until = untilCursor;
         const page = await relay.query([filter as Parameters<typeof relay.query>[0][0]]);
         if (page.length === 0) break;
-        for (const ev of page) allEvents.push(ev);
+        for (const ev of page) {
+          if (!seenIds.has(ev.id)) {
+            seenIds.add(ev.id);
+            allEvents.push(ev);
+          }
+        }
         setStats(prev => ({ ...prev, scanned: allEvents.length }));
         if (page.length < PAGE_SIZE) break;
         if (page.length === lastCount && page.length < PAGE_SIZE) break;
         lastCount = page.length;
         const oldest = page.reduce((min, ev) => ev.created_at < min ? ev.created_at : min, page[0].created_at);
-        const nextUntil = oldest - 1;
-        if (nextUntil < sinceTs) break;
+        const nextUntil = oldest;
+        if (nextUntil <= sinceTs) break;
         if (untilCursor !== undefined && nextUntil >= untilCursor) break;
         untilCursor = nextUntil;
       }
@@ -1838,6 +1869,7 @@ function HarvestMediaSection() {
       try {
         let untilCursor: number | undefined = untilBound;
         let lastEventCount = 0;
+        const seenIds = new Set<string>();
         while (true) {
           if (abortRef.current) break;
           const filter: Record<string, unknown> = { authors: [user.pubkey], limit: PAGE_SIZE };
@@ -1845,7 +1877,12 @@ function HarvestMediaSection() {
           if (sinceTs !== undefined) filter.since = sinceTs;
           const page = await relay.query([filter as Parameters<typeof relay.query>[0][0]]);
           if (page.length === 0) break;
-          for (const ev of page) events.push(ev);
+          for (const ev of page) {
+            if (!seenIds.has(ev.id)) {
+              seenIds.add(ev.id);
+              events.push(ev);
+            }
+          }
           setStats(prev => ({ ...prev, scanned: events.length }));
 
           // For local relay: break when we get fewer than PAGE_SIZE
@@ -1859,10 +1896,12 @@ function HarvestMediaSection() {
           if (!isLocalRelay && page.length === lastEventCount && page.length < PAGE_SIZE) break;
           lastEventCount = page.length;
 
-          // Next page: oldest event's created_at - 1 (but never go before sinceTs)
+          // Next page: use oldest (not oldest - 1) so events sharing
+          // the same timestamp are included in the next page. Dedup
+          // by event ID prevents double-processing.
           const oldest = page.reduce((min, ev) => ev.created_at < min ? ev.created_at : min, page[0].created_at);
-          const nextUntil = oldest - 1;
-          if (sinceTs !== undefined && nextUntil < sinceTs) break;
+          const nextUntil = oldest;
+          if (sinceTs !== undefined && nextUntil <= sinceTs) break;
           if (untilCursor !== undefined && nextUntil >= untilCursor) break; // no progress — avoid infinite loop
           untilCursor = nextUntil;
         }
@@ -2191,7 +2230,7 @@ function HarvestMediaSection() {
               id="auto-harvest-24h"
               className="h-4 w-4"
               checked={autoHarvest24h}
-              disabled={isAutoHarvesting}
+              disabled={isAutoHarvesting || !isMaster}
               onChange={e => handleToggleAutoHarvest(e.target.checked)}
             />
             <div>

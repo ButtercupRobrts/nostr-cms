@@ -37,14 +37,22 @@ const EXT_MAP: Record<string, string> = {
 /**
  * Append the correct file extension to Blossom URLs (bare sha256 hashes).
  * Some browsers (Safari) won't render <video> elements without an extension.
+ * Inserts the extension before any query string or fragment.
  */
 export function urlWithExtension(blob: BlossomBlob): string {
-  const path = blob.url.split('?')[0].split('#')[0];
-  if (/\.[a-zA-Z0-9]{2,5}$/.test(path)) return blob.url;
+  try {
+    const url = new URL(blob.url);
+    if (/\.[a-zA-Z0-9]{2,5}$/.test(url.pathname)) return blob.url;
 
-  const mime = (blob.type || '').toLowerCase();
-  const ext = EXT_MAP[mime];
-  return ext ? blob.url + ext : blob.url;
+    const mime = (blob.type || '').toLowerCase();
+    const ext = EXT_MAP[mime];
+    if (!ext) return blob.url;
+    url.pathname += ext;
+    return url.toString();
+  } catch {
+    // Malformed URL — return as-is rather than corrupting it
+    return blob.url;
+  }
 }
 
 /**

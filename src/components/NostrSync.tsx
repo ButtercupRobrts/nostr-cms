@@ -207,6 +207,9 @@ export function NostrSync() {
           const readOnlyTag = eventTags.find(([name]) => name === 'read_only_admin_access')?.[1];
           if (readOnlyTag !== undefined) loadedConfig.readOnlyAdminAccess = readOnlyTag === 'true';
 
+          const autoHarvestTag = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
+          if (autoHarvestTag !== undefined) loadedConfig.autoHarvest24h = autoHarvestTag === 'true';
+
           const relaysTag = eventTags.find(([name]) => name === 'publish_relays')?.[1];
           if (relaysTag) {
             try {
