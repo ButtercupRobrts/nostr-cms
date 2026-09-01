@@ -20,6 +20,7 @@ import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
+import { stripImageMetadata } from '@/lib/mediaProcessing';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import {
@@ -240,12 +241,22 @@ export default function AdminBlog() {
       const urls: string[] = [];
 
       for (const file of files) {
+        // Strip metadata from images before upload
+        const { file: strippedFile, stripped, reason } = await stripImageMetadata(file);
+        if (!stripped && reason === 'gif') {
+          toast({
+            title: 'Metadata not stripped',
+            description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+            variant: 'destructive',
+          });
+        }
+
         const uploader = new BlossomUploader({
           servers: [defaultBlossomRelay],
           signer: user.signer,
         });
 
-        const result = await uploader.upload(file);
+        const result = await uploader.upload(strippedFile);
         if (result && result.length > 0) {
           const urlTag = result.find((tag: string[]) => tag[0] === 'url');
           if (urlTag && urlTag[1]) {

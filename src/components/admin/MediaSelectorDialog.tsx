@@ -38,7 +38,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { type BlossomBlob, urlWithExtension, getMediaPreviewKind } from '@/lib/blossom';
 import { useMasonry } from '@/hooks/useMasonry';
-import { streamProcessVideo } from '@/lib/mediaProcessing';
+import { streamProcessVideo, stripImageMetadata } from '@/lib/mediaProcessing';
 
 const PAGE_SIZE = 60;
 const MAX_EAGER_PREVIEWS = PAGE_SIZE;
@@ -218,11 +218,20 @@ export function MediaSelectorDialog({
         if (isVideo) {
           await streamProcessVideo(uploadRelays[0], file, 'none', 'original', user.signer);
         } else {
+          // Strip metadata from images before upload
+          const { file: strippedFile, stripped, reason } = await stripImageMetadata(file);
+          if (!stripped && reason === 'gif') {
+            toast({
+              title: 'Metadata not stripped',
+              description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+              variant: 'destructive',
+            });
+          }
           const uploader = new BlossomUploader({
             servers: uploadRelays,
             signer: user.signer,
           });
-          await uploader.upload(file);
+          await uploader.upload(strippedFile);
         }
         completedSteps++;
         setUploadProgress((completedSteps / totalFiles) * 100);

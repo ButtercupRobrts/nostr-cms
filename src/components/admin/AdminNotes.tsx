@@ -18,6 +18,7 @@ import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-q
 import { useInView } from 'react-intersection-observer';
 import { useNostr } from '@nostrify/react';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
+import { stripImageMetadata } from '@/lib/mediaProcessing';
 import { queryWithNip65Fanout, getNip65ReadRelays } from '@/lib/queryRelays';
 import {
   Plus,
@@ -526,12 +527,22 @@ export default function AdminNotes() {
       const urls: string[] = [];
 
       for (const file of files) {
+        // Strip metadata from images before upload
+        const { file: strippedFile, stripped, reason } = await stripImageMetadata(file);
+        if (!stripped && reason === 'gif') {
+          toast({
+            title: 'Metadata not stripped',
+            description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+            variant: 'destructive',
+          });
+        }
+
         const uploader = new BlossomUploader({
           servers: [defaultBlossomRelay],
           signer: user.signer,
         });
 
-        const result = await uploader.upload(file);
+        const result = await uploader.upload(strippedFile);
         if (result && result.length > 0) {
           const urlTag = result.find((tag: string[]) => tag[0] === 'url');
           if (urlTag && urlTag[1]) {
