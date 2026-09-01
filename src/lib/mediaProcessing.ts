@@ -31,7 +31,7 @@ export interface VideoProcessResult {
   mime: string;
 }
 
-export type VideoQuality = 'high' | 'medium' | 'low';
+export type VideoQuality = 'high' | 'medium' | 'low' | 'none';
 export type VideoResolution = 'original' | '1080' | '720' | '480';
 
 // ─── Image Processing ───
@@ -227,7 +227,7 @@ function replaceExtension(filename: string, mimeType: string): string {
   return baseName + ext;
 }
 
-/** UTF-8-safe base64 encoding (handles non-Latin1 characters in filenames) */
+/** Base64-encode a string, handling UTF-8 correctly (unlike btoa). */
 export function toBase64(str: string): string {
   return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
 }
@@ -241,6 +241,7 @@ export function estimateVideoSize(
   resolution: VideoResolution = 'original',
 ): number {
   const qualityRatios: Record<VideoQuality, number> = {
+    none: 1.0,    // copy-only remux — no re-encoding, ~same size
     high: 0.80,   // CRF 18 — high quality, modest compression
     medium: 0.50, // CRF 23 — balanced
     low: 0.30,    // CRF 28 — aggressive compression
@@ -371,70 +372,4 @@ export async function streamProcessVideo(
   return response.json();
 }
 
-/**
- * Stream a File to the Blossom /upload endpoint without reading it all
- * into memory first. The BlossomUploader library calls file.arrayBuffer()
- * which allocates the entire file in JS heap — this crashes iOS Safari on
- * large videos (>100MB). This function streams the file body directly via
- * fetch() and computes the SHA-256 hash upfront.
- *
- * Returns the same tag format as BlossomUploader.upload().
- */
-export async function streamUpload(
-  file: File,
-  server: string,
-  signer: { signEvent: (event: unknown) => Promise<unknown> },
-  expiresIn: number = 15 * 60_000,
-): Promise<string[][]> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
-  const x = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 
-  const now = Date.now();
-  const expiration = now + expiresIn;
-  const event = await signer.signEvent({
-    kind: 24242,
-    content: `Upload ${file.name}`,
-    created_at: Math.floor(now / 1000),
-    tags: [
-      ['t', 'upload'],
-      ['x', x],
-      ['size', file.size.toString()],
-      ['expiration', Math.floor(expiration / 1000).toString()],
-    ],
-  }) as Record<string, unknown>;
-
-  const authBase64 = toBase64(JSON.stringify(event));
-
-  const url = new URL('/upload', server);
-  const response = await fetch(url, {
-    method: 'PUT',
-    body: file,
-    headers: {
-      'Authorization': `Nostr ${authBase64}`,
-      'Content-Type': file.type || 'application/octet-stream',
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Upload failed (${response.status}): ${text}`);
-  }
-
-  const json = await response.json() as {
-    url: string;
-    sha256: string;
-    size: number;
-    type?: string;
-  };
-
-  const tags: string[][] = [
-    ['url', json.url],
-    ['x', json.sha256],
-    ['ox', json.sha256],
-    ['size', json.size.toString()],
-  ];
-  if (json.type) tags.push(['m', json.type]);
-  return tags;
-}

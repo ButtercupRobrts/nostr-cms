@@ -38,7 +38,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { type BlossomBlob, urlWithExtension, getMediaPreviewKind } from '@/lib/blossom';
 import { useMasonry } from '@/hooks/useMasonry';
-import { streamUpload } from '@/lib/mediaProcessing';
+import { streamProcessVideo } from '@/lib/mediaProcessing';
 
 const PAGE_SIZE = 60;
 const MAX_EAGER_PREVIEWS = PAGE_SIZE;
@@ -115,13 +115,7 @@ export function MediaSelectorDialog({
 
       // Skip signing for the local relay — it doesn't require auth for /list/
       // and the signing prompt can take 15+ seconds with browser extensions.
-      const isLocalRelay = (() => {
-      try {
-        const u = new URL(selectedRelay);
-        const host = u.hostname.toLowerCase();
-        return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === window.location.hostname;
-      } catch { return false; }
-    })();
+      const isLocalRelay = selectedRelay.includes('buttercup.exe.xyz') || selectedRelay.includes('localhost') || selectedRelay.includes('127.0.0.1');
 
       if (user.signer && !isLocalRelay) {
         try {
@@ -218,11 +212,11 @@ export function MediaSelectorDialog({
       for (const file of Array.from(files)) {
         const isVideo = file.type.startsWith('video/');
 
-        // Use streamUpload for videos (avoids arrayBuffer() memory spike
-        // that crashes iOS Safari on large files). Use BlossomUploader for
-        // images since it supports multi-server upload via Promise.any.
+        // Videos stream through /process-video-stream with quality "none"
+        // (copy-only remux, no re-encoding) to avoid the arrayBuffer()
+        // memory spike that crashes iOS Safari on large files.
         if (isVideo) {
-          await streamUpload(file, uploadRelays[0], user.signer);
+          await streamProcessVideo(uploadRelays[0], file, 'none', 'original', user.signer);
         } else {
           const uploader = new BlossomUploader({
             servers: uploadRelays,

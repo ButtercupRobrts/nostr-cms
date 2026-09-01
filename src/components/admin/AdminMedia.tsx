@@ -57,7 +57,6 @@ import {
   processImage,
   processVideo,
   streamProcessVideo,
-  streamUpload,
   estimateVideoSize,
   formatBytes,
   toBase64,
@@ -831,10 +830,9 @@ function UploadMediaSection() {
   const [imageQuality, setImageQuality] = useState(85);
   const [maxImageDim, setMaxImageDim] = useState(2048);
 
-  // Video streaming transcode option — when enabled, videos are streamed
-  // directly to the /process-video-stream endpoint and transcoded on the
-  // fly, avoiding the arrayBuffer() memory spike that crashes iOS Safari.
-  const [processVideosOnUpload, setProcessVideosOnUpload] = useState(false);
+  // Video streaming — videos always stream through the server endpoint.
+  // "none" quality does a copy-only remux (strips container metadata, no
+  // re-encoding); other qualities transcode with ffmpeg.
   const [videoQuality, setVideoQuality] = useState<VideoQuality>('medium');
   const [videoResolution, setVideoResolution] = useState<VideoResolution>('720');
 
@@ -950,13 +948,16 @@ function UploadMediaSection() {
           }
         }
 
-        // ─── Video streaming transcode ───
-        // When "process videos on upload" is enabled, stream the video
-        // directly to /process-video-stream. This avoids the arrayBuffer()
-        // memory spike that crashes iOS Safari on large videos, and skips
-        // storing the raw original entirely.
-        if (isVideo && processVideosOnUpload) {
-          setUploadStatus(`Uploading & transcoding ${file.name}...`);
+        // ─── Video streaming ───
+        // All videos stream through /process-video-stream, which avoids the
+        // arrayBuffer() memory spike that crashes iOS Safari on large files.
+        // Quality "none" does a copy-only remux (strips container metadata,
+        // no re-encoding); other qualities transcode with ffmpeg.
+        if (isVideo) {
+          const statusLabel = videoQuality === 'none'
+            ? `Uploading ${file.name} (no transcode)...`
+            : `Uploading & transcoding ${file.name}...`;
+          setUploadStatus(statusLabel);
 
           const result = await streamProcessVideo(
             selectedRelays[0],
@@ -982,23 +983,17 @@ function UploadMediaSection() {
           continue; // skip the normal upload path
         }
 
-        // ─── Upload (images + raw videos) ───
+        // ─── Upload (images) ───
         setUploadStatus(`Uploading ${file.name}${processedInfo}...`);
 
-        // Use streamUpload for videos (avoids arrayBuffer() memory spike
-        // that crashes iOS Safari on large files). Use BlossomUploader for
-        // images since it supports multi-server upload via Promise.any.
+        // Use BlossomUploader for images (supports multi-server upload via Promise.any)
         let tags: string[][];
-        if (isVideo) {
-          tags = await streamUpload(fileToUpload, selectedRelays[0], user.signer);
-        } else {
-          const uploader = new BlossomUploader({
-            servers: selectedRelays,
-            signer: user.signer,
-            expiresIn: 15 * 60_000,
-          });
-          tags = await uploader.upload(fileToUpload);
-        }
+        const uploader = new BlossomUploader({
+          servers: selectedRelays,
+          signer: user.signer,
+          expiresIn: 15 * 60_000,
+        });
+        tags = await uploader.upload(fileToUpload);
 
         // Extract sha256 from the upload response tags
         const shaTag = tags.find(t => t[0] === 'x');
@@ -1207,38 +1202,25 @@ function UploadMediaSection() {
           )}
 
           <p className="text-[10px] text-muted-foreground border-t pt-3">
-            Image metadata (EXIF, GPS, camera info) is always stripped on upload. Videos are uploaded as-is, then transcoded to MP4 (H.264/AAC) server-side with metadata stripped.
+            Image metadata (EXIF, GPS, camera info) is always stripped on upload. Videos are streamed to the server for processing — choose "No transcoding" to preserve original quality, or pick a quality preset to transcode to MP4 (H.264/AAC) with metadata stripped.
           </p>
 
-          {/* Video streaming transcode option */}
+          {/* Video quality settings — always visible for video uploads */}
           <div className="border-t pt-3 space-y-3">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="process-videos-upload"
-                className="h-4 w-4"
-                checked={processVideosOnUpload}
-                onChange={e => setProcessVideosOnUpload(e.target.checked)}
-              />
-              <div>
-                <label htmlFor="process-videos-upload" className="text-sm font-medium cursor-pointer">Transcode videos on upload</label>
-                <p className="text-xs text-muted-foreground">Stream directly to ffmpeg — avoids memory issues on mobile. Original is never stored.</p>
+            <div className="flex flex-wrap gap-3 items-center">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Video quality:</Label>
+                <Select value={videoQuality} onValueChange={v => setVideoQuality(v as VideoQuality)}>
+                  <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No transcoding</SelectItem>
+                    <SelectItem value="high">High (CRF 18)</SelectItem>
+                    <SelectItem value="medium">Medium (CRF 23)</SelectItem>
+                    <SelectItem value="low">Low (CRF 28)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-
-            {processVideosOnUpload && (
-              <div className="ml-7 flex flex-wrap gap-3 items-center">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs whitespace-nowrap">Quality:</Label>
-                  <Select value={videoQuality} onValueChange={v => setVideoQuality(v as VideoQuality)}>
-                    <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">High (CRF 18)</SelectItem>
-                      <SelectItem value="medium">Medium (CRF 23)</SelectItem>
-                      <SelectItem value="low">Low (CRF 28)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              {videoQuality !== 'none' && (
                 <div className="flex items-center gap-2">
                   <Label className="text-xs whitespace-nowrap">Resolution:</Label>
                   <Select value={videoResolution} onValueChange={v => setVideoResolution(v as VideoResolution)}>
@@ -1251,8 +1233,11 @@ function UploadMediaSection() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Videos are streamed directly to ffmpeg — avoids memory issues on mobile. Original is never stored.
+            </p>
           </div>
         </div>
 
@@ -1321,6 +1306,7 @@ function UploadMediaSection() {
                   <Select value={pendingVideo.quality} onValueChange={v => setPendingVideo(prev => prev ? { ...prev, quality: v as VideoQuality } : null)}>
                     <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="none">No transcoding</SelectItem>
                       <SelectItem value="high">High (CRF 18)</SelectItem>
                       <SelectItem value="medium">Medium (CRF 23)</SelectItem>
                       <SelectItem value="low">Low (CRF 28)</SelectItem>
