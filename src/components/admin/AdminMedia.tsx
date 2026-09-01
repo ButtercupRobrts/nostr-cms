@@ -1672,7 +1672,7 @@ function HarvestMediaSection() {
       toast({
         title: enable ? '24h auto-backup enabled' : '24h auto-backup disabled',
         description: enable
-          ? 'Daily cron armed. Running a 24h harvest now...'
+          ? 'Running a 24h harvest now. Daily scheduling requires server-side support (not yet implemented).'
           : 'Daily automatic harvesting has been turned off.',
       });
 
@@ -1706,6 +1706,7 @@ function HarvestMediaSection() {
       const localRelayUrl = getDefaultRelayUrl();
       const relay = new NRelay1(localRelayUrl, { verifyEvent: () => true });
 
+      try {
       const now = Math.floor(Date.now() / 1000);
       const sinceTs = now - 86400;
 
@@ -1825,6 +1826,9 @@ function HarvestMediaSection() {
         title: '24h harvest complete',
         description: `Mirrored: ${mirrored}, Skipped: ${skipped}, Errors: ${errors}`,
       });
+      } finally {
+        relay.close();
+      }
     } catch (e) {
       toast({ title: '24h harvest failed', description: String(e), variant: 'destructive' });
     } finally {
@@ -1845,6 +1849,9 @@ function HarvestMediaSection() {
     setProgress(0);
     setStats({ scanned: 0, found: 0, mirrored: 0, uploaded: 0, skipped: 0, errors: 0 });
 
+    const isLocalRelay = isLocalSource(sourceUrl);
+    const relay = new NRelay1(sourceUrl, isLocalRelay ? { verifyEvent: () => true } : {});
+
     try {
       // 1. Fetch all events from source relay — paginate in batches of 500 using `until`
       // When the source is our own relay, skip signature verification because
@@ -1854,8 +1861,6 @@ function HarvestMediaSection() {
       // For external relays, keep default verification for security — but
       // use a larger request limit and don't break early on short pages,
       // since some events may be dropped by signature verification.
-      const isLocalRelay = isLocalSource(sourceUrl);
-      const relay = new NRelay1(sourceUrl, isLocalRelay ? { verifyEvent: () => true } : {});
       const events: NostrEvent[] = [];
       const PAGE_SIZE = 500;
 
@@ -1917,9 +1922,9 @@ function HarvestMediaSection() {
       // /my-stats endpoint (which scans the DB) would show 0 media.
       // We publish to the targetBlossom's relay (same host, WebSocket).
       if (!isLocalRelay && targetBlossom) {
+        const targetWsUrl = targetBlossom.replace(/^http/, 'ws');
+        const targetRelay = new NRelay1(targetWsUrl, { verifyEvent: () => true });
         try {
-          const targetWsUrl = targetBlossom.replace(/^http/, 'ws');
-          const targetRelay = new NRelay1(targetWsUrl, { verifyEvent: () => true });
           let published = 0;
           let publishErrors = 0;
           // Publish in batches to avoid overwhelming the relay
@@ -1939,9 +1944,10 @@ function HarvestMediaSection() {
           if (published > 0) {
             console.log(`Harvest: published ${published} events to local relay (${publishErrors} errors)`);
           }
-          targetRelay.close();
         } catch (e) {
           console.warn('Harvest: failed to publish events to local relay:', e);
+        } finally {
+          targetRelay.close();
         }
       }
 
@@ -2127,6 +2133,7 @@ function HarvestMediaSection() {
       queryClient.invalidateQueries({ queryKey: ['blossom-blobs'] });
       toast({ title: 'Harvest complete' });
     } finally {
+      relay.close();
       setIsRunning(false);
     }
   };
