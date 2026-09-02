@@ -210,6 +210,39 @@ export function NostrSync() {
           const autoHarvestTag = eventTags.find(([name]) => name === 'auto_harvest_24h')?.[1];
           if (autoHarvestTag !== undefined) loadedConfig.autoHarvest24h = autoHarvestTag === 'true';
 
+          const nip19Gateway = eventTags.find(([name]) => name === 'nip19_gateway')?.[1];
+          if (nip19Gateway !== undefined) loadedConfig.nip19Gateway = nip19Gateway;
+
+          const heroButtonsTag = eventTags.find(([name]) => name === 'hero_buttons')?.[1];
+          if (heroButtonsTag) {
+            try {
+              const parsed = JSON.parse(heroButtonsTag);
+              if (Array.isArray(parsed)) loadedConfig.heroButtons = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse hero_buttons', e);
+            }
+          }
+
+          const sectionOrderTag = eventTags.find(([name]) => name === 'section_order')?.[1];
+          if (sectionOrderTag) {
+            try {
+              const parsed = JSON.parse(sectionOrderTag);
+              if (Array.isArray(parsed)) loadedConfig.sectionOrder = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse section_order', e);
+            }
+          }
+
+          const homepageSectionOrderTag = eventTags.find(([name]) => name === 'homepage_section_order')?.[1];
+          if (homepageSectionOrderTag) {
+            try {
+              const parsed = JSON.parse(homepageSectionOrderTag);
+              if (Array.isArray(parsed)) loadedConfig.homepageSectionOrder = parsed;
+            } catch (e) {
+              console.warn('[NostrSync] Failed to parse homepage_section_order', e);
+            }
+          }
+
           const relaysTag = eventTags.find(([name]) => name === 'publish_relays')?.[1];
           if (relaysTag) {
             try {
@@ -224,7 +257,16 @@ export function NostrSync() {
           if (adminRolesTag) {
             try {
               const parsed = JSON.parse(adminRolesTag);
-              if (parsed && typeof parsed === 'object') loadedConfig.adminRoles = parsed as Record<string, string>;
+              if (parsed && typeof parsed === 'object') {
+                // Migrate old role names: primary→publisher, secondary→user
+                const migrated: Record<string, string> = {};
+                for (const [pk, role] of Object.entries(parsed)) {
+                  if (role === 'primary') migrated[pk] = 'publisher';
+                  else if (role === 'secondary') migrated[pk] = 'user';
+                  else migrated[pk] = role as string;
+                }
+                loadedConfig.adminRoles = migrated;
+              }
             } catch (e) {
               console.warn('[NostrSync] Failed to parse admin_roles', e);
             }

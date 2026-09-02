@@ -101,7 +101,7 @@ export default function AdminFeed() {
   const adminRoles = config.siteConfig?.adminRoles || {};
   const userRole = userPubkey ? adminRoles[userPubkey] : undefined;
 
-  const canManageFeed = isMaster || userRole === 'primary';
+  const canManageFeed = isMaster || userRole === 'publisher';
 
   const handleSave = async () => {
     if (!canManageFeed) return;

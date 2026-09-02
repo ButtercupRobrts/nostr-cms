@@ -54,7 +54,7 @@ const AppConfigSchema = z.object({
     maxFeedNotes: z.number().optional(),
     defaultRelay: z.string().optional(),
     publishRelays: z.array(z.string()).optional(),
-    adminRoles: z.record(z.string(), z.enum(['primary', 'secondary'])).optional(),
+    adminRoles: z.record(z.string(), z.enum(['publisher', 'user'])).optional(),
     tweakcnThemeUrl: z.string().optional(),
     sectionOrder: z.array(z.string()).optional(),
     homepageSectionOrder: z.array(z.string()).optional(),
@@ -95,6 +95,19 @@ export function AppProvider(props: AppProviderProps) {
         // Data migration: Handle old navigation object format
         if (parsed && typeof parsed === 'object' && parsed.navigation && typeof parsed.navigation === 'object' && !Array.isArray(parsed.navigation) && 'navigation' in parsed.navigation) {
           parsed.navigation = (parsed.navigation as Record<string, unknown>).navigation;
+        }
+
+        // Data migration: adminRoles renamed from 'primary'/'secondary' to
+        // 'publisher'/'user'. Map any old values so existing localStorage
+        // and 30078 event data continues to work.
+        if (parsed?.siteConfig?.adminRoles && typeof parsed.siteConfig.adminRoles === 'object') {
+          const migrated: Record<string, string> = {};
+          for (const [pk, role] of Object.entries(parsed.siteConfig.adminRoles)) {
+            if (role === 'primary') migrated[pk] = 'publisher';
+            else if (role === 'secondary') migrated[pk] = 'user';
+            else migrated[pk] = role as string;
+          }
+          parsed.siteConfig.adminRoles = migrated;
         }
 
         const config = AppConfigSchema.partial().parse(parsed);
@@ -152,11 +165,11 @@ export function AppProvider(props: AppProviderProps) {
         merged.siteConfig.adminRoles = {};
       }
 
-      // INJECT MASTER PUBKEY: Ensure master user is always a primary admin
+      // INJECT MASTER PUBKEY: Ensure master user is always a publisher
       if (masterPubkey) {
         merged.siteConfig.adminRoles = {
           ...merged.siteConfig.adminRoles,
-          [masterPubkey]: 'primary'
+          [masterPubkey]: 'publisher'
         };
       }
     }
