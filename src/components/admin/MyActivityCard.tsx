@@ -48,7 +48,7 @@ export default function MyActivityCard() {
   //     index and can't be queried by `authors` via WebSocket
   //   - The badger pubkey-only index has a limit bug that returns
   //     fewer events than requested when no `kinds` filter is set
-  const { data: stats, isLoading } = useQuery({
+  const { data: stats, isLoading, isError } = useQuery({
     queryKey: ['my-stats', user?.pubkey],
     queryFn: async (): Promise<MyStatsResponse> => {
       const apiBase = getApiBaseUrl();
@@ -113,6 +113,17 @@ export default function MyActivityCard() {
         {isLoading ? (
           <div className="flex items-center justify-center py-6">
             <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-destructive">Failed to load activity</p>
+            <p className="text-xs text-muted-foreground">
+              Could not reach the relay dashboard API. Check your connection and try again.
+            </p>
+            <Button variant="outline" size="sm" onClick={handleRefresh} className="h-7 text-xs">
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Retry
+            </Button>
           </div>
         ) : !stats || stats.total === 0 ? (
           <div className="space-y-2">

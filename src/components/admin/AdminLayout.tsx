@@ -70,7 +70,7 @@ export default function AdminLayout() {
     queryClient.prefetchQuery({
       queryKey: ['admin-events'],
       queryFn: async () => {
-        return nostr.query([{ kinds: [31922, 31923, 30312, 30313], limit: 100 }], { signal });
+        return nostr.query([{ kinds: [31922, 31923, 30313], limit: 50 }], { signal });
       },
     });
   }, [nostr, user?.pubkey, queryClient]);

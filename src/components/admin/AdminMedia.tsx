@@ -449,6 +449,9 @@ function BrowseMediaSection() {
 
   const filteredBlobs = useMemo(() => {
     const filtered = blobs?.filter(blob => {
+      // Always exclude non-media blobs (e.g. text/plain, application/json)
+      const isMedia = blob.type?.startsWith('image/') || blob.type?.startsWith('video/');
+      if (!isMedia) return false;
       if (mediaType === 'image' && !blob.type?.startsWith('image/')) return false;
       if (mediaType === 'video' && !blob.type?.startsWith('video/')) return false;
       if (ownerFilter !== 'all' && blob.owner !== ownerFilter) return false;

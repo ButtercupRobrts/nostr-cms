@@ -335,7 +335,7 @@ export default function AdminBlog() {
 
   // Fetch blog posts
   const { data: allPosts, refetch } = useQuery({
-    queryKey: ['admin-blog-posts', user?.pubkey],
+    queryKey: ['admin-blog-posts-full', user?.pubkey],
     queryFn: async () => {
       const signal = AbortSignal.timeout(5000);
       const filters: NostrFilter[] = [{ kinds: [30023], limit: 100 }];

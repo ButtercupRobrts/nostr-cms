@@ -101,21 +101,24 @@ export default function AdminDashboard() {
     })
     : events;
 
+  // Get the start time of an event, handling both live events (kind 30313,
+  // "starts" tag with Unix timestamp) and calendar events (kind 31922/31923,
+  // "start" tag with date/datetime string parsed via parseNostrEventTime).
+  const getStart = (event: NonNullable<typeof filteredEvents>[number]): number | undefined => {
+    const tag = event.tags?.find(([name]) => name === (event.kind === 30313 ? 'starts' : 'start'))?.[1];
+    if (!tag) return undefined;
+    return event.kind === 30313 ? Number(tag) : parseNostrEventTime(tag);
+  };
+
   // Filter to upcoming events only
   const now = Date.now() / 1000;
   const upcomingEvents = filteredEvents?.filter(event => {
-    const tags = event.tags || [];
-    const isLiveEvent = event.kind === 30313;
-    const startTag = tags.find(([name]) => name === (isLiveEvent ? 'starts' : 'start'))?.[1];
-    if (!startTag) return false;
-    const startTime = isLiveEvent ? Number(startTag) : parseNostrEventTime(startTag);
+    const startTime = getStart(event);
     if (startTime === undefined) return false;
     return startTime > now;
   }).sort((a, b) => {
-    const aTags = a.tags || [];
-    const bTags = b.tags || [];
-    const aStart = Number(aTags.find(([name]) => name === (a.kind === 30313 ? 'starts' : 'start'))?.[1] || 0);
-    const bStart = Number(bTags.find(([name]) => name === (b.kind === 30313 ? 'starts' : 'start'))?.[1] || 0);
+    const aStart = getStart(a) ?? 0;
+    const bStart = getStart(b) ?? 0;
     return aStart - bStart;
   });
 
@@ -260,8 +263,8 @@ export default function AdminDashboard() {
           </Card>
         ))}
         {/* My Activity — visible to all admin users (primary & secondary).
-            Uses a standard Nostr author query, not the admin API, so it
-            works for anyone without relay backend session. */}
+            Uses the relay dashboard API (/dashboard/my-stats), which
+            requires a backend session established via /dashboard/login. */}
         <MyActivityCard />
       </div>
 

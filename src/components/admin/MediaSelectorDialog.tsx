@@ -155,7 +155,9 @@ export function MediaSelectorDialog({
 
   const filteredBlobs = useMemo(() => {
     const filtered = blobs?.filter(blob => {
-      if (mediaType === 'all') return true;
+      // Always exclude non-media blobs (e.g. text/plain, application/json)
+      const isMedia = blob.type?.startsWith('image/') || blob.type?.startsWith('video/');
+      if (!isMedia) return false;
       if (mediaType === 'image') return blob.type?.startsWith('image/');
       if (mediaType === 'video') return blob.type?.startsWith('video/');
       return true;

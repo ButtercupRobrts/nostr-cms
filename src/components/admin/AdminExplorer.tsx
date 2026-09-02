@@ -638,9 +638,10 @@ function EventPreview({ event, onClose, onFilterAuthor }: {
 
 // ---- Event Browser Section ----
 
-function EventBrowser({ stats, onFilterAuthor }: {
+function EventBrowser({ stats, authorFilter, setAuthorFilter }: {
   stats?: RelayStats;
-  onFilterAuthor: (pubkey: string) => void;
+  authorFilter: string;
+  setAuthorFilter: (pubkey: string) => void;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -649,7 +650,6 @@ function EventBrowser({ stats, onFilterAuthor }: {
   // selectedKinds: empty array means "all kinds". When non-empty, only
   // those kinds are queried. All available kinds are ticked on by default.
   const [selectedKinds, setSelectedKinds] = useState<number[]>([]);
-  const [authorFilter, setAuthorFilter] = useState<string>('');
   const [limit, setLimit] = useState(50);
   const [selectedEvent, setSelectedEvent] = useState<EventSummary | null>(null);
 
@@ -893,7 +893,7 @@ function EventBrowser({ stats, onFilterAuthor }: {
           <EventPreview
             event={selectedEvent}
             onClose={() => setSelectedEvent(null)}
-            onFilterAuthor={onFilterAuthor}
+            onFilterAuthor={setAuthorFilter}
           />
         )}
       </CardContent>
@@ -954,7 +954,7 @@ export default function AdminExplorer() {
 
       <StatsOverview stats={stats} isLoading={isLoading} />
 
-      <EventBrowser stats={stats} onFilterAuthor={(pubkey) => setAuthorFilter(pubkey)} />
+      <EventBrowser stats={stats} authorFilter={authorFilter} setAuthorFilter={setAuthorFilter} />
 
       {stats && <PubkeyBreakdown stats={stats} />}
     </div>
