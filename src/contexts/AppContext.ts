@@ -44,8 +44,8 @@ export interface AppConfig {
     defaultRelay?: string;
     /** Publishing relays for blasting content */
     publishRelays?: string[];
-    /** Admin roles mapping: pubkey -> 'primary' | 'secondary' */
-    adminRoles?: Record<string, 'primary' | 'secondary'>;
+    /** Admin roles mapping: pubkey -> 'publisher' | 'user' */
+    adminRoles?: Record<string, 'publisher' | 'user'>;
     /** TweakCN theme URL */
     tweakcnThemeUrl?: string;
     /** Order of settings sections (admin card ordering) */
