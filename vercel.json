@@ -1,1 +1,11 @@
-{"installCommand": "npm install", "buildCommand": "npm run build", "framework": "vite"}
+{
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://swarm.hivetalk.org/api/:path*"
+    }
+  ]
+}
