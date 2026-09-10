@@ -566,7 +566,9 @@ const Index = ({ preview = false }: { preview?: boolean } = {}) => {
   // Built-in IDs: hero, events, blog, feed.
   // Page IDs: page:<path> (e.g. page:/about).
   // Reconcile: keep known IDs in order, append any page sections not yet in the order.
-  const configuredOrder = config.siteConfig?.homepageSectionOrder ?? [...BUILTIN_HOMEPAGE_SECTION_IDS];
+  const configuredOrder = config.siteConfig?.homepageSectionOrder?.length
+    ? config.siteConfig.homepageSectionOrder
+    : [...BUILTIN_HOMEPAGE_SECTION_IDS];
   const pageIds = homepagePages.map(p => `page:${p.path}`);
   const knownIds = new Set([...BUILTIN_HOMEPAGE_SECTION_IDS, ...pageIds]);
   const sectionOrder = [

@@ -237,7 +237,7 @@ export function NostrSync() {
           if (homepageSectionOrderTag) {
             try {
               const parsed = JSON.parse(homepageSectionOrderTag);
-              if (Array.isArray(parsed)) loadedConfig.homepageSectionOrder = parsed;
+              if (Array.isArray(parsed) && parsed.length > 0) loadedConfig.homepageSectionOrder = parsed;
             } catch (e) {
               console.warn('[NostrSync] Failed to parse homepage_section_order', e);
             }

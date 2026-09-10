@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { getDefaultRelayUrl, getSiteConfigDTag } from '@/lib/relay';
+import { BUILTIN_HOMEPAGE_SECTION_IDS } from '@/components/admin/settings/types';
 
 interface SiteConfig {
   title: string;
@@ -373,7 +374,7 @@ export default function AdminSystemSettings() {
         ['tweakcn_theme_url', siteConfig.tweakcnThemeUrl || ''],
         ['nip19_gateway', sc?.nip19Gateway ?? 'https://nostr.at'],
         ['section_order', JSON.stringify(siteConfig.sectionOrder || [])],
-        ['homepage_section_order', JSON.stringify(sc?.homepageSectionOrder ?? [])],
+        ['homepage_section_order', JSON.stringify(sc?.homepageSectionOrder?.length ? sc.homepageSectionOrder : [...BUILTIN_HOMEPAGE_SECTION_IDS])],
         ['read_only_admin_access', siteConfig.readOnlyAdminAccess.toString()],
         ['auto_harvest_24h', (siteConfig.autoHarvest24h ?? false).toString()],
         ['updated_at', Math.floor(Date.now() / 1000).toString()],
@@ -460,7 +461,7 @@ export default function AdminSystemSettings() {
           ['tweakcn_theme_url', ''],
           ['nip19_gateway', 'https://nostr.at'],
           ['section_order', JSON.stringify(['navigation', 'basic', 'styling', 'hero', 'content', 'feed'])],
-          ['homepage_section_order', JSON.stringify([])],
+          ['homepage_section_order', JSON.stringify([...BUILTIN_HOMEPAGE_SECTION_IDS])],
           ['read_only_admin_access', 'false'],
           ['auto_harvest_24h', 'false'],
           ['updated_at', Math.floor(Date.now() / 1000).toString()],

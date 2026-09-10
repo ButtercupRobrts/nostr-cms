@@ -68,7 +68,7 @@ export default function AdminSettings() {
     ].filter(Boolean),
     heroButtons: config.siteConfig?.heroButtons ?? DEFAULT_HERO_BUTTONS,
     sectionOrder: config.siteConfig?.sectionOrder ?? [...ALL_SETTINGS_SECTION_IDS],
-    homepageSectionOrder: config.siteConfig?.homepageSectionOrder ?? [...BUILTIN_HOMEPAGE_SECTION_IDS],
+    homepageSectionOrder: config.siteConfig?.homepageSectionOrder?.length ? config.siteConfig.homepageSectionOrder : [...BUILTIN_HOMEPAGE_SECTION_IDS],
   }));
 
   // Stable callback for section components to update siteConfig fields
@@ -420,7 +420,7 @@ export default function AdminSettings() {
         if (homepageSectionOrderTag) {
           try {
             const parsed = JSON.parse(homepageSectionOrderTag);
-            if (Array.isArray(parsed)) loadedConfig.homepageSectionOrder = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) loadedConfig.homepageSectionOrder = parsed;
           } catch (e) {
             console.error('Failed to parse homepage_section_order tag', e);
           }
