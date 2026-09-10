@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Database,
   Users,
+  Settings,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -101,7 +102,10 @@ export default function AdminLayout() {
     ...(canAccessExplorer ? [{ name: 'Relay Explorer', href: '/admin/explorer', icon: Database }] : []),
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
     { name: 'Follow Backup', href: '/admin/follow-backup', icon: Users },
-    ...(canAccessSettings ? [{ name: 'Admin Settings', href: '/admin/system-settings', icon: Shield }] : []),
+    ...(canAccessSettings ? [
+      { name: 'Site Settings', href: '/admin/settings', icon: Settings },
+      { name: 'System Settings', href: '/admin/system-settings', icon: Shield },
+    ] : []),
     { name: 'Help', href: '/admin/help', icon: HelpCircle },
   ];
 
