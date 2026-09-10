@@ -82,9 +82,11 @@ function HeroSection() {
     heroTitle: config.siteConfig?.heroTitle || 'Welcome to Our Community',
     heroSubtitle: config.siteConfig?.heroSubtitle || 'Join us for amazing meetups and events',
     heroBackground: config.siteConfig?.heroBackground || '',
-    heroBackgroundType: config.siteConfig?.heroBackgroundType ?? 'none',
+    // Older config events may contain the image URL but not the newer type tag.
+    // Preserve the configured image instead of silently rendering no background.
+    heroBackgroundType: config.siteConfig?.heroBackgroundType || (config.siteConfig?.heroBackground ? 'image' : 'none'),
     heroBackgroundColor: config.siteConfig?.heroBackgroundColor || '#1a1a2e',
-    heroTextColor: config.siteConfig?.heroTextColor || '#000000',
+    heroTextColor: config.siteConfig?.heroTextColor || '#ffffff',
     heroBanner: config.siteConfig?.heroBanner || '',
   };
 
