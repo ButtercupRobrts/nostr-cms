@@ -276,7 +276,7 @@ The real problems are:
 **What:** Accept the reviewer's breakdown. But recognize that most of PR #16 already landed on `zeabur-dashboard`. The remaining work is: (1) close PR #16 as superseded, (2) fix bugs in what already landed, (3) add NIP-86 as new work, (4) fix the nostr-cms components that call non-existent endpoints.
 
 **Swarm PRs (against `zeabur-dashboard`):**
-1. **PR 1: Bugfixes** — fix bech32 alphabet (use `go-nostr/nip19`), fix `go s.save()` race condition, remove secrets from `getEnvironmentVars` entirely (not just mask), add NIP-98 to dashboard login. ~100-150 lines.
+1. **PR 1: Trivial fixes** — fix bech32 alphabet (use `go-nostr/nip19`), fix `go s.save()` race condition, remove secrets from `getEnvironmentVars` entirely (not just mask). ~50-80 lines. *(NIP-98 dashboard login is deliberately split into its own PR — see §6.2 pipeline 1c — since it's a breaking change to the bundled dashboard UI.)*
 2. **PR 2: NIP-86 relay management** — enable khatru's built-in NIP-86 `ManagementAPI` handlers for allow/ban kinds, IPs, list allowed/banned pubkeys. ~100-150 lines. NIP-98 auth. **Does NOT replace `AdminRelayAccess`** — complements it.
 3. **PR 3: Video transcoding** (optional, separate) — `/process-video` endpoints with NIP-98 auth, ffmpeg in Dockerfile, in a `video.go` file. Separate concern.
 4. **Reject/abandon:** `zap_stats.go` (external relay ingestion — if wanted, new PR with reviewer's concerns addressed), `/backfill-owners`, blob sidecar maps.
@@ -312,7 +312,7 @@ Reasons:
 
 4. **NIP-86 is additive, not replacement.** NIP-86 complements the existing REST admin API (allow/ban kinds, IPs) but cannot replace `AdminRelayAccess` (no names CRUD). Strategy B adds NIP-86 without removing working code.
 
-5. **The security fix ships first.** The `/api/dashboard/login` no-signature vulnerability is live in production. Strategy B's PR 1 fixes it with NIP-98 (the same pattern `useScheduledPosts.ts` already uses).
+5. **The security fix ships early.** The `/api/dashboard/login` no-signature vulnerability is live in production. Strategy B ships it as its own focused PR (pipeline 1c — NIP-98, same pattern `useScheduledPosts.ts` already uses), right after the trivial-fixes PR.
 
 6. **The community zap stats decision is deferred to `bitkarrot`.** `useCommunityZapStats` calls an endpoint that 404s on upstream. Either delete it (lose the leaderboard) or build client-side aggregation (real work). Ask the maintainer before acting.
 
