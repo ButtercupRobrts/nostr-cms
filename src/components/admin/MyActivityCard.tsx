@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { categorizeKinds, kindLabel } from '@/lib/kinds';
 import { getApiBaseUrl } from '@/lib/relay';
+import { useNostr } from '@nostrify/react';
+import { type BlossomBlob } from '@/lib/blossom';
 
 // ---- Types ----
 
@@ -37,41 +39,115 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv)([?#].*)?$/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|avif|svg)([?#].*)?$/i;
+const URL_RE = /https?:\/\/[^\s"'<>()[\]]+/g;
+const MEDIA_TAGS = new Set(['image', 'thumb', 'banner', 'picture']);
+
+function tallyMediaUrl(url: string, mime: string | undefined, acc: { images: number; videos: number }) {
+  const isVideo = mime ? mime.startsWith('video/') : VIDEO_EXT.test(url);
+  const isImage = mime ? mime.startsWith('image/') : IMAGE_EXT.test(url);
+  if (isVideo) acc.videos++;
+  else if (isImage) acc.images++;
+}
+
 export default function MyActivityCard() {
   const { user } = useCurrentUser();
+  const { nostr } = useNostr();
   const queryClient = useQueryClient();
 
-  // Fetch personal stats from the backend. This does a full DB scan
-  // server-side (like /stats) filtered to the authenticated user,
-  // which is more accurate than a client-side Nostr query because:
-  //   - Kind 24242 (Blossom blob index) events aren't in the pubkey
-  //     index and can't be queried by `authors` via WebSocket
-  //   - The badger pubkey-only index has a limit bug that returns
-  //     fewer events than requested when no `kinds` filter is set
+  // Personal stats computed client-side — the relay's /api/*/my-stats
+  // endpoint may not exist upstream, and the data is public anyway:
+  //   - events come from a WebSocket `authors` query against the relay
+  //   - blossom stats come from the public BUD-02 /list/<pubkey> endpoint
   const { data: stats, isLoading, isError } = useQuery({
     queryKey: ['my-stats', user?.pubkey],
     queryFn: async (): Promise<MyStatsResponse> => {
-      const apiBase = getApiBaseUrl();
+      const pubkey = user!.pubkey.toLowerCase().trim();
+      const signal = AbortSignal.timeout(30_000);
 
-      // Ensure we have a dashboard session cookie by logging in first.
-      // The /login endpoint accepts any pubkey listed in nostr.json.
-      const loginResponse = await fetch(`${apiBase}/dashboard/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pubkey: user!.pubkey.toLowerCase().trim() }),
-      });
-      if (!loginResponse.ok) {
-        throw new Error(`Login failed: ${loginResponse.status}`);
+      const events = await nostr.query(
+        [{ authors: [pubkey], limit: 10000 }],
+        { signal },
+      );
+
+      const byKind: Record<string, number> = {};
+      const embedded = { images: 0, videos: 0 };
+      let lastActivity = 0;
+
+      for (const evt of events) {
+        byKind[evt.kind] = (byKind[evt.kind] || 0) + 1;
+        if (evt.created_at > lastActivity) lastActivity = evt.created_at;
+
+        for (const tag of evt.tags) {
+          if (tag[0] === 'imeta') {
+            let url = '';
+            let mime: string | undefined;
+            for (const part of tag.slice(1)) {
+              if (part.startsWith('url ')) url = part.slice(4);
+              else if (part.startsWith('m ')) mime = part.slice(2);
+            }
+            if (url) tallyMediaUrl(url, mime, embedded);
+          } else if (tag.length >= 2 && MEDIA_TAGS.has(tag[0])) {
+            const url = tag[1].toLowerCase();
+            if (VIDEO_EXT.test(url) || IMAGE_EXT.test(url)) {
+              tallyMediaUrl(url, undefined, embedded);
+            }
+          }
+        }
+
+        if (evt.kind === 0) {
+          try {
+            const profile = JSON.parse(evt.content) as Record<string, unknown>;
+            for (const field of ['picture', 'banner', 'image']) {
+              const val = profile[field];
+              if (typeof val === 'string') {
+                const url = val.toLowerCase();
+                if (VIDEO_EXT.test(url) || IMAGE_EXT.test(url)) {
+                  tallyMediaUrl(url, undefined, embedded);
+                }
+              }
+            }
+          } catch {
+            // not JSON — skip
+          }
+        } else if (evt.kind !== 24242 && evt.content) {
+          for (const raw of evt.content.toLowerCase().match(URL_RE) ?? []) {
+            const url = raw.replace(/[.,;:!?)\]]+$/, '');
+            if (VIDEO_EXT.test(url) || IMAGE_EXT.test(url)) {
+              tallyMediaUrl(url, undefined, embedded);
+            }
+          }
+        }
       }
 
-      const res = await fetch(`${apiBase}/dashboard/my-stats`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch my-stats: ${res.status}`);
+      // Blossom blobs owned by this pubkey (public list endpoint)
+      const blossom = { count: 0, totalSize: 0, images: 0, videos: 0, other: 0 };
+      const blossomBase = getApiBaseUrl().replace(/\/api\/?$/, '');
+      try {
+        const res = await fetch(`${blossomBase}/list/${pubkey}`, { signal });
+        if (res.ok) {
+          const blobs = (await res.json()) as BlossomBlob[];
+          for (const blob of blobs) {
+            blossom.count++;
+            blossom.totalSize += blob.size || 0;
+            if (blob.type?.startsWith('image/')) blossom.images++;
+            else if (blob.type?.startsWith('video/')) blossom.videos++;
+            else blossom.other++;
+          }
+        }
+      } catch {
+        // blob list unavailable — stats still render without it
       }
-      return res.json();
+
+      return {
+        pubkey,
+        total: events.length,
+        byKind,
+        lastActivity,
+        blossom,
+        embedded,
+      };
     },
     enabled: !!user?.pubkey,
     staleTime: 60 * 1000,
