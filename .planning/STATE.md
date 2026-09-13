@@ -10,8 +10,8 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 ## Current Position
 
 - **Phase**: 4 (Upstream Restructuring & Security Fixes)
-- **Step**: 04-01/02/07 done (stopgap live, #16 closed, GHSA filed; swarm PRs #18 + #19 open); 04-04 partial (nostr-cms PR #81 open; community-zap gated)
-- **Next action**: Await bitkarrot replies (DM sent — advisory ack, NIP-98 sign-off, zap-stats disposition, NIP-86); NIP-46 follow-up is a separate future PR
+- **Step**: 04-01/02/07 done (stopgap live, #16 closed, GHSA filed; swarm PRs #18 + #19 open); 04-03 BOTH halves built locally — swarm `pr-nip98-login` (NIP-98 login + HMAC cookies + per-request NIP-98 on admin API) and nostr-cms `pr-nip98-admin-api` (shared signed-fetch helper, drops session cookies) — not pushed, gated on ack; 04-04 partial (nostr-cms PR #81 open; community-zap gated)
+- **Next action**: Await bitkarrot replies (DM sent — advisory ack, NIP-98 sign-off, zap-stats disposition, NIP-86); both NIP-98 branches ready to push on ack; NIP-46 follow-up is a separate future PR
 
 ## Reality Check (2026-09-12)
 
