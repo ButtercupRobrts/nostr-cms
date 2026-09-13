@@ -123,9 +123,12 @@ export default function MyActivityCard() {
 
       // Blossom blobs owned by this pubkey (public list endpoint)
       const blossom = { count: 0, totalSize: 0, images: 0, videos: 0, other: 0 };
-      const blossomBase = getApiBaseUrl().replace(/\/api\/?$/, '');
+      const blossomOrigin = new URL(getApiBaseUrl(), window.location.origin).origin;
+      const listUrl = blossomOrigin === window.location.origin
+        ? `/list/${pubkey}`
+        : `${blossomOrigin}/list/${pubkey}`;
       try {
-        const res = await fetch(`${blossomBase}/list/${pubkey}`, { signal });
+        const res = await fetch(listUrl, { signal: AbortSignal.timeout(10_000) });
         if (res.ok) {
           const blobs = (await res.json()) as BlossomBlob[];
           for (const blob of blobs) {
