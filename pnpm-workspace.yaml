@@ -5,3 +5,4 @@ overrides:
   linkify-it: "5.0.2"
   nanoid: "3.3.19"
   ws: "8.21.3"
+  brace-expansion@>=2: "2.1.7"

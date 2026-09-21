@@ -92,7 +92,8 @@
     "flatted": ">=3.4.2",
     "minimatch@<9": "3.1.4",
     "linkify-it": "5.0.2",
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "brace-expansion@>=2": "2.1.7"
   },
   "pnpm": {
     "overrides": {
@@ -100,7 +101,8 @@
       "flatted": ">=3.4.2",
       "minimatch@<9": "3.1.4",
       "linkify-it": "5.0.2",
-      "ws": "8.21.3"
+      "ws": "8.21.3",
+      "brace-expansion@>=2": "2.1.7"
     }
   },
   "devDependencies": {
