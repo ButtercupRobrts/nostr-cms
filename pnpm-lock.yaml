@@ -10,6 +10,7 @@ overrides:
   minimatch@<9: 3.1.4
   linkify-it: 5.0.2
   nanoid: 3.3.19
+  ws: 8.21.3
 
 importers:
 
@@ -4840,8 +4841,8 @@ packages:
     resolution: {integrity: sha512-7KxauUdBmSdWnmpaGFg+ppNjKF8uNLry8LyzjauQDOVONfFLNKrKvQOxZ/VuTIcS/gge/YNahf5RIIQWTSarlg==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
 
-  ws@8.20.1:
-    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
+  ws@8.21.3:
+    resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5635,7 +5636,7 @@ snapshots:
       lru-cache: 10.4.3
       nostr-tools: 2.23.0(typescript@5.9.3)
       websocket-ts: 2.2.1
-      ws: 8.20.1
+      ws: 8.21.3
       zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
@@ -5652,7 +5653,7 @@ snapshots:
       lru-cache: 10.4.3
       nostr-tools: 2.23.0(typescript@5.9.3)
       websocket-ts: 2.2.1
-      ws: 8.20.1
+      ws: 8.21.3
       zod: 4.3.6
     transitivePeerDependencies:
       - bufferutil
@@ -8430,7 +8431,7 @@ snapshots:
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.2.0
-      ws: 8.20.1
+      ws: 8.21.3
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil
@@ -10057,7 +10058,7 @@ snapshots:
       imurmurhash: 0.1.4
       signal-exit: 3.0.7
 
-  ws@8.20.1: {}
+  ws@8.21.3: {}
 
   xml-name-validator@5.0.0: {}
 
