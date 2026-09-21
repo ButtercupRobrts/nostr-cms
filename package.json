@@ -91,14 +91,16 @@
     "handlebars": ">=4.7.9",
     "flatted": ">=3.4.2",
     "minimatch@<9": "3.1.4",
-    "linkify-it": "5.0.2"
+    "linkify-it": "5.0.2",
+    "ws": "8.21.3"
   },
   "pnpm": {
     "overrides": {
       "handlebars": ">=4.7.9",
       "flatted": ">=3.4.2",
       "minimatch@<9": "3.1.4",
-      "linkify-it": "5.0.2"
+      "linkify-it": "5.0.2",
+      "ws": "8.21.3"
     }
   },
   "devDependencies": {
