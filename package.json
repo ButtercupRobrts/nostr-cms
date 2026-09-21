@@ -103,7 +103,8 @@
     "postcss-selector-parser": "6.1.4",
     "@humanfs/node": "0.16.8",
     "minimatch@9": "9.0.9",
-    "markdown-it": "14.3.2"
+    "markdown-it": "14.3.2",
+    "@babel/core": "7.29.7"
   },
   "pnpm": {
     "overrides": {
@@ -121,7 +122,8 @@
       "postcss-selector-parser": "6.1.4",
       "@humanfs/node": "0.16.8",
       "minimatch@9": "9.0.9",
-      "markdown-it": "14.3.2"
+      "markdown-it": "14.3.2",
+      "@babel/core": "7.29.7"
     }
   },
   "devDependencies": {
