@@ -167,15 +167,15 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
 
         if (newOnPage === 0) {
           // A terminating page as large as the biggest page seen is
-          // ambiguous: the boundary timestamp may hold more events than the
-          // relay's effective page size, and filters have no intra-timestamp
-          // cursor. Probe the timestamp with a limit one larger than the
-          // observed page — a bigger response proves the page wasn't
-          // truncated; a smaller one fully enumerates the boundary; an equal
-          // one falls back to per-member probes, which drain a crowded
-          // second through narrow #p filters. A member slice filling the
-          // observed page is the irreducible case: flagged "may be
-          // incomplete" rather than asserted as a lower bound.
+          // ambiguous: the boundary timestamp may hold more events than one
+          // page can carry, and filters have no intra-timestamp cursor.
+          // Re-query the timestamp with a limit one larger than the observed
+          // page size. A short response fully enumerates the boundary; a
+          // full one is the relay-cap ambiguity; a response beyond the page
+          // size proves the earlier page WAS truncated (by the requested
+          // limit, not the relay) — in both cases per-member #p probes can
+          // still drain the crowded second. A member slice that fills the
+          // probe is the irreducible case: flagged as possibly incomplete.
           if (batch.length > 0 && batch.length >= pageCapacity && cursor !== undefined) {
             let canResume = false;
             try {
@@ -189,12 +189,13 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
                 }],
                 { signal },
               );
-              if (tProbe.length > pageCapacity) {
-                break; // relay cap exceeds the observed page size — complete
-              }
               for (const evt of tProbe) ingest(evt);
               canResume = true;
-              if (tProbe.length === pageCapacity) {
+              if (tProbe.length >= pageCapacity) {
+                // tProbe hit P or P+1: the boundary may hold unseen events.
+                // A member slice as large as the tProbe itself is still
+                // ambiguous — its own page could be truncated under the same
+                // cap. Anything smaller enumerates that member's slice.
                 for (const memberPk of memberSet) {
                   const probe = await nostr.query(
                     [{
@@ -207,7 +208,7 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
                     { signal },
                   );
                   for (const evt of probe) ingest(evt);
-                  if (probe.length >= pageCapacity) suspectedPartial = true;
+                  if (probe.length >= tProbe.length) suspectedPartial = true;
                 }
               }
             } catch {
