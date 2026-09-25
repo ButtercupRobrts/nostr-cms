@@ -51,6 +51,10 @@ export type CommunityTimeRange = '24h' | '7d' | '30d' | 'all';
 const RECEIPT_LIMIT = 5000;
 const MAX_PAGES = 20; // 100k receipts safety cap
 const CHUNK = 150;
+// Smallest page size worth treating as a possible relay cap. Real caps are
+// far higher (strfry/nostream ~500+, badger clamps at 250) — below this, a
+// "full" page is just a small history, not truncation.
+const MIN_SUSPICIOUS_PAGE = 100;
 
 /** '30d' isn't a single-pubkey TimeRange — express it as a custom window. */
 function toRangeParams(timeRange: CommunityTimeRange): { tr: TimeRange; custom?: CustomDateRange } {
@@ -112,6 +116,13 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
       // which may be lower than the requested limit on some backends.
       let pageCapacity = 0;
 
+      const ingest = (evt: NostrEvent): boolean => {
+        if (seenIds.has(evt.id)) return false;
+        seenIds.add(evt.id);
+        if (isValidZapReceipt(evt)) receipts.push(evt as ZapReceipt);
+        return true;
+      };
+
       for (let page = 0; page < MAX_PAGES; page++) {
         const filter: NostrFilter = {
           kinds: [9735],
@@ -138,18 +149,55 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         let oldest = Infinity;
         for (const evt of batch) {
           if (evt.created_at < oldest) oldest = evt.created_at;
-          if (seenIds.has(evt.id)) continue;
-          seenIds.add(evt.id);
-          newOnPage++;
-          if (isValidZapReceipt(evt)) receipts.push(evt as ZapReceipt);
+          if (ingest(evt)) newOnPage++;
         }
 
         if (newOnPage === 0) {
-          // A full page of only repeats means the boundary timestamp holds
-          // more events than the relay's page size — nothing below it is
-          // reachable, so totals are a lower bound. A short all-repeats page
-          // means the relay genuinely returned everything.
-          if (batch.length > 0 && batch.length >= pageCapacity) partial = true;
+          // A terminating page is ambiguous only when it's as large as the
+          // biggest page seen AND that size could be a real relay cap: then
+          // the boundary timestamp may hold more events than one page can
+          // carry (filters have no intra-timestamp cursor). Probe that
+          // timestamp once per member — narrow #p filters drain a crowded
+          // second — and resume strictly below it when it proves complete.
+          if (
+            batch.length > 0 &&
+            batch.length >= pageCapacity &&
+            pageCapacity >= MIN_SUSPICIOUS_PAGE &&
+            cursor !== undefined
+          ) {
+            let boundaryComplete = true;
+            for (const memberPk of memberSet) {
+              let probe: NostrEvent[];
+              try {
+                probe = await nostr.query(
+                  [{
+                    kinds: [9735],
+                    '#p': [memberPk],
+                    limit: RECEIPT_LIMIT,
+                    since: cursor,
+                    until: cursor,
+                  }],
+                  { signal },
+                );
+              } catch {
+                boundaryComplete = false;
+                break;
+              }
+              // One member alone filling a page at a single timestamp can't
+              // be disambiguated further — report totals as a lower bound.
+              if (probe.length >= pageCapacity) {
+                boundaryComplete = false;
+                break;
+              }
+              for (const evt of probe) ingest(evt);
+            }
+            if (!boundaryComplete) {
+              partial = true;
+            } else {
+              cursor = cursor - 1;
+              continue;
+            }
+          }
           break;
         }
         pageCapacity = Math.max(pageCapacity, batch.length);
