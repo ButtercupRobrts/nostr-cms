@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import { categorizeKinds, kindLabel } from '@/lib/kinds';
-import { getApiBaseUrl } from '@/lib/relay';
+import { getDefaultRelayUrl } from '@/lib/relay';
+import { useBlossomRelays } from '@/hooks/useBlossomRelays';
 import { useNostr } from '@nostrify/react';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { type BlossomBlob } from '@/lib/blossom';
 
 // ---- Types ----
@@ -17,6 +19,8 @@ import { type BlossomBlob } from '@/lib/blossom';
 interface MyStatsResponse {
   pubkey: string;
   total: number;
+  /** true when the relay stopped returning events before the full history was retrieved */
+  partial: boolean;
   byKind: Record<string, number>;
   lastActivity: number;
   blossom: {
@@ -26,6 +30,8 @@ interface MyStatsResponse {
     videos: number;
     other: number;
   };
+  /** true when the /list request failed — distinguishes "unavailable" from "empty" */
+  blossomUnavailable: boolean;
   embedded: {
     images: number;
     videos: number;
@@ -51,25 +57,101 @@ function tallyMediaUrl(url: string, mime: string | undefined, acc: { images: num
   else if (isImage) acc.images++;
 }
 
+// Relays clamp per-query results (e.g. badger backends ignore limits above
+// MaxLimit and fall back to ~250), so a short page never means "done" — only a
+// page with zero unseen events does.
+const PAGE_SIZE = 500;
+const MAX_PAGES = 40; // 20k events safety cap
+
+/**
+ * Page backwards through an author's history using `until` (inclusive, so
+ * results are deduped by id) until a page yields nothing new.
+ *
+ * A second kind+author filter for kind 24242 covers blossom blob index
+ * events, which some deployments don't expose through the pubkey-only index.
+ * Both filters share the same cursor — they cover the same author timeline.
+ */
+async function queryAuthorEvents(
+  nostr: { query: (filters: NostrFilter[], opts?: { signal?: AbortSignal }) => Promise<NostrEvent[]> },
+  pubkey: string,
+  signal: AbortSignal,
+): Promise<{ events: NostrEvent[]; partial: boolean }> {
+  const events = new Map<string, NostrEvent>();
+  let until: number | undefined;
+  let partial = false;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const filters: NostrFilter[] = [
+      { authors: [pubkey], limit: PAGE_SIZE },
+      { authors: [pubkey], kinds: [24242], limit: PAGE_SIZE },
+    ];
+    if (until !== undefined) {
+      for (const f of filters) f.until = until;
+    }
+
+    let batch: NostrEvent[];
+    try {
+      batch = await nostr.query(filters, { signal });
+    } catch (e) {
+      // Timed out mid-pagination — report what we have as partial rather
+      // than discarding a large accumulated history.
+      if (signal.aborted && events.size > 0) {
+        partial = true;
+        break;
+      }
+      throw e;
+    }
+
+    let newOnPage = 0;
+    let oldest = Infinity;
+    for (const evt of batch) {
+      if (!events.has(evt.id)) {
+        events.set(evt.id, evt);
+        newOnPage++;
+      }
+      if (evt.created_at < oldest) oldest = evt.created_at;
+    }
+
+    if (newOnPage === 0) break;
+    until = oldest;
+    if (page === MAX_PAGES - 1) partial = true;
+  }
+
+  return { events: [...events.values()], partial };
+}
+
 export default function MyActivityCard() {
   const { user } = useCurrentUser();
   const { nostr } = useNostr();
   const queryClient = useQueryClient();
+  const blossomRelays = useBlossomRelays();
+
+  // Blossom server for the /list lookup: the configured blossom server,
+  // falling back to the same relay the events come from (ws → http origin).
+  // Deliberately not getApiBaseUrl() — VITE_SWARM_API_URL can point at a
+  // different host than the relay serving the events.
+  let blossomBase = blossomRelays[0] || '';
+  if (!blossomBase) {
+    try {
+      blossomBase = new URL(
+        getDefaultRelayUrl().replace(/^wss:/, 'https:').replace(/^ws:/, 'http:'),
+      ).origin;
+    } catch {
+      // leave empty — the fetch reports unavailable below
+    }
+  }
 
   // Personal stats computed client-side — the relay's /api/*/my-stats
   // endpoint may not exist upstream, and the data is public anyway:
   //   - events come from a WebSocket `authors` query against the relay
   //   - blossom stats come from the public BUD-02 /list/<pubkey> endpoint
   const { data: stats, isLoading, isError } = useQuery({
-    queryKey: ['my-stats', user?.pubkey],
+    queryKey: ['my-stats', user?.pubkey, blossomBase],
     queryFn: async (): Promise<MyStatsResponse> => {
       const pubkey = user!.pubkey.toLowerCase().trim();
-      const signal = AbortSignal.timeout(30_000);
+      const signal = AbortSignal.timeout(60_000);
 
-      const events = await nostr.query(
-        [{ authors: [pubkey], limit: 10000 }],
-        { signal },
-      );
+      const { events, partial } = await queryAuthorEvents(nostr, pubkey, signal);
 
       const byKind: Record<string, number> = {};
       const embedded = { images: 0, videos: 0 };
@@ -123,32 +205,39 @@ export default function MyActivityCard() {
 
       // Blossom blobs owned by this pubkey (public list endpoint)
       const blossom = { count: 0, totalSize: 0, images: 0, videos: 0, other: 0 };
-      const blossomOrigin = new URL(getApiBaseUrl(), window.location.origin).origin;
-      const listUrl = blossomOrigin === window.location.origin
-        ? `/list/${pubkey}`
-        : `${blossomOrigin}/list/${pubkey}`;
-      try {
-        const res = await fetch(listUrl, { signal: AbortSignal.timeout(10_000) });
-        if (res.ok) {
-          const blobs = (await res.json()) as BlossomBlob[];
-          for (const blob of blobs) {
-            blossom.count++;
-            blossom.totalSize += blob.size || 0;
-            if (blob.type?.startsWith('image/')) blossom.images++;
-            else if (blob.type?.startsWith('video/')) blossom.videos++;
-            else blossom.other++;
+      let blossomUnavailable = false;
+      if (!blossomBase) {
+        blossomUnavailable = true;
+      } else {
+        try {
+          const res = await fetch(`${blossomBase.replace(/\/$/, '')}/list/${pubkey}`, {
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (res.ok) {
+            const blobs = (await res.json()) as BlossomBlob[];
+            for (const blob of blobs) {
+              blossom.count++;
+              blossom.totalSize += blob.size || 0;
+              if (blob.type?.startsWith('image/')) blossom.images++;
+              else if (blob.type?.startsWith('video/')) blossom.videos++;
+              else blossom.other++;
+            }
+          } else {
+            blossomUnavailable = true;
           }
+        } catch {
+          blossomUnavailable = true;
         }
-      } catch {
-        // blob list unavailable — stats still render without it
       }
 
       return {
         pubkey,
         total: events.length,
+        partial,
         byKind,
         lastActivity,
         blossom,
+        blossomUnavailable,
         embedded,
       };
     },
@@ -169,7 +258,75 @@ export default function MyActivityCard() {
     }
   }
   const categories = stats ? categorizeKinds(byKind) : [];
-  const hasMedia = (stats && (stats.blossom.count > 0 || stats.embedded.images > 0 || stats.embedded.videos > 0));
+  const hasMedia = !!(stats && (stats.blossom.count > 0 || stats.embedded.images > 0 || stats.embedded.videos > 0));
+
+  // Media section is rendered independently of the event count — an account
+  // can own Blossom blobs without having any queryable events.
+  const mediaSection = stats && (hasMedia || stats.blossomUnavailable) ? (
+    <div className="space-y-2 pt-2 border-t">
+      {/* Blossom media (stored on this relay) */}
+      {stats.blossomUnavailable ? (
+        <div className="flex items-center gap-2">
+          <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Blossom media list unavailable</span>
+        </div>
+      ) : stats.blossom.count > 0 ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium">Blossom media</span>
+            <span className="text-sm font-mono">{stats.blossom.count}</span>
+            <span className="text-xs text-muted-foreground">
+              ({formatBytes(stats.blossom.totalSize)})
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 pl-5">
+            {stats.blossom.images > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <ImageIcon className="h-3 w-3" />
+                {stats.blossom.images} image{stats.blossom.images !== 1 ? 's' : ''}
+              </span>
+            )}
+            {stats.blossom.videos > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Video className="h-3 w-3" />
+                {stats.blossom.videos} video{stats.blossom.videos !== 1 ? 's' : ''}
+              </span>
+            )}
+            {stats.blossom.other > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {stats.blossom.other} other
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Embedded media (imeta tags in posts, may be hosted elsewhere) */}
+      {stats.embedded.images > 0 || stats.embedded.videos > 0 ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium">Media in posts</span>
+          </div>
+          <div className="flex flex-wrap gap-2 pl-5">
+            {stats.embedded.images > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <ImageIcon className="h-3 w-3" />
+                {stats.embedded.images} image{stats.embedded.images !== 1 ? 's' : ''}
+              </span>
+            )}
+            {stats.embedded.videos > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Video className="h-3 w-3" />
+                {stats.embedded.videos} video{stats.embedded.videos !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <Card>
@@ -204,25 +361,28 @@ export default function MyActivityCard() {
             </Button>
           </div>
         ) : !stats || stats.total === 0 ? (
-          <div className="space-y-2">
-            <p className="text-2xl font-bold">0</p>
-            <p className="text-xs text-muted-foreground">
-              No events from you on this relay yet.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Use{' '}
-              <Link to="/admin/sync-content" className="underline hover:text-primary">
-                Sync Content
-              </Link>{' '}
-              to back up your activity from other relays.
-            </p>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-2xl font-bold">0</p>
+              <p className="text-xs text-muted-foreground">
+                No events from you on this relay yet.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Use{' '}
+                <Link to="/admin/sync-content" className="underline hover:text-primary">
+                  Sync Content
+                </Link>{' '}
+                to back up your activity from other relays.
+              </p>
+            </div>
+            {mediaSection}
           </div>
         ) : (
           <>
             {/* Total + last activity */}
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold">
-                {stats.total.toLocaleString()}
+                {stats.total.toLocaleString()}{stats.partial && '+'}
               </span>
               <span className="text-xs text-muted-foreground">
                 events on this relay
@@ -232,6 +392,11 @@ export default function MyActivityCard() {
               <p className="text-xs text-muted-foreground">
                 Last activity:{' '}
                 {new Date(stats.lastActivity * 1000).toLocaleDateString()}
+              </p>
+            )}
+            {stats.partial && (
+              <p className="text-xs text-muted-foreground">
+                The relay stopped returning older events — totals are a lower bound.
               </p>
             )}
 
@@ -270,66 +435,7 @@ export default function MyActivityCard() {
             </div>
 
             {/* Media section */}
-            {hasMedia && (
-              <div className="space-y-2 pt-2 border-t">
-                {/* Blossom media (stored on this relay) */}
-                {stats.blossom.count > 0 && (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-medium">Blossom media</span>
-                      <span className="text-sm font-mono">{stats.blossom.count}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({formatBytes(stats.blossom.totalSize)})
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pl-5">
-                      {stats.blossom.images > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ImageIcon className="h-3 w-3" />
-                          {stats.blossom.images} image{stats.blossom.images !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {stats.blossom.videos > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Video className="h-3 w-3" />
-                          {stats.blossom.videos} video{stats.blossom.videos !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {stats.blossom.other > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {stats.blossom.other} other
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Embedded media (imeta tags in posts, may be hosted elsewhere) */}
-                {stats.embedded.images > 0 || stats.embedded.videos > 0 ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-medium">Media in posts</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pl-5">
-                      {stats.embedded.images > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <ImageIcon className="h-3 w-3" />
-                          {stats.embedded.images} image{stats.embedded.images !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {stats.embedded.videos > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Video className="h-3 w-3" />
-                          {stats.embedded.videos} video{stats.embedded.videos !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
+            {mediaSection}
 
             <p className="text-xs text-muted-foreground pt-1">
               Back up your events via{' '}
