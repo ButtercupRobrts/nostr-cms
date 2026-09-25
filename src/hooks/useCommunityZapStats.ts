@@ -1,10 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrJsonUsers } from '@/hooks/useNostrJsonUsers';
-import type { NostrEvent } from '@nostrify/nostrify';
-import type { NStore } from '@nostrify/types';
+import type { NostrEvent, NostrFilter, NStore } from '@nostrify/nostrify';
 import type {
   AnalyticsData,
   ParsedZap,
@@ -40,12 +39,16 @@ export interface MemberStats {
 export interface CommunityZapStats {
   aggregate: AnalyticsData;
   members: MemberStats[];
+  /** Unix seconds — AdminZaplytics compares it against Date.now() / 1000. */
   lastUpdated: number;
+  /** True when pagination hit a bound and totals are a lower bound. */
+  partial?: boolean;
 }
 
 export type CommunityTimeRange = '24h' | '7d' | '30d' | 'all';
 
 const RECEIPT_LIMIT = 5000;
+const MAX_PAGES = 20; // 100k receipts safety cap
 const CHUNK = 150;
 
 /** '30d' isn't a single-pubkey TimeRange — express it as a custom window. */
@@ -70,7 +73,7 @@ async function queryChunked(nostr: NStore, ids: string[], signal: AbortSignal): 
   return out;
 }
 
-export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all') {
+export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enabled = true) {
   const { user } = useCurrentUser();
   const { nostr } = useNostr();
   const queryClient = useQueryClient();
@@ -81,33 +84,64 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all') {
     .map((u) => ({ name: u.name, pubkey: u.pubkey.toLowerCase().trim() }));
   const memberKey = members.map((m) => m.pubkey).sort().join(',');
 
-  const { data, isLoading, error } = useQuery({
+  const { data: rawData, isLoading, error } = useQuery({
     queryKey: ['community-zap-stats', memberKey, timeRange],
     queryFn: async (): Promise<CommunityZapStats> => {
       const memberSet = new Set(members.map((m) => m.pubkey));
-      const nameByPubkey = new Map(members.map((m) => [m.pubkey, m.name]));
       if (memberSet.size === 0) {
-        return { aggregate: emptyAnalytics(), members: [], lastUpdated: Date.now() };
+        return { aggregate: emptyAnalytics(), members: [], lastUpdated: Math.floor(Date.now() / 1000) };
       }
 
       const { tr, custom } = toRangeParams(timeRange);
       const { since, until } = getDateRange(tr, custom);
       const signal = AbortSignal.timeout(60_000);
 
-      // One query: all kind-9735 receipts addressed to any member (#p OR-match)
-      const events = await nostr.query(
-        [{
+      // Page backwards through all kind-9735 receipts addressed to any member
+      // (#p OR-match). `until` is inclusive, so every seen ID is tracked and a
+      // page with zero unseen events terminates the loop — this also preserves
+      // receipts that share a boundary timestamp.
+      const seenIds = new Set<string>();
+      const receipts: ZapReceipt[] = [];
+      let cursor: number | undefined = until;
+      let partial = false;
+
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const filter: NostrFilter = {
           kinds: [9735],
           '#p': [...memberSet],
           limit: RECEIPT_LIMIT,
           ...(since ? { since } : {}),
-          ...(until ? { until } : {}),
-        }],
-        { signal },
-      );
+          ...(cursor ? { until: cursor } : {}),
+        };
 
-      const receipts = events
-        .filter((e): e is ZapReceipt => isValidZapReceipt(e as NostrEvent));
+        let batch: NostrEvent[];
+        try {
+          batch = await nostr.query([filter], { signal });
+        } catch (e) {
+          // Timed out mid-pagination — report what we have as partial rather
+          // than discarding the accumulated history.
+          if (signal.aborted && receipts.length > 0) {
+            partial = true;
+            break;
+          }
+          throw e;
+        }
+
+        let newOnPage = 0;
+        let oldest = Infinity;
+        for (const evt of batch) {
+          if (evt.created_at < oldest) oldest = evt.created_at;
+          if (seenIds.has(evt.id)) continue;
+          seenIds.add(evt.id);
+          newOnPage++;
+          if (isValidZapReceipt(evt)) receipts.push(evt as ZapReceipt);
+        }
+
+        if (newOnPage === 0 || (since > 0 && oldest <= since)) break;
+        cursor = oldest;
+        if (page === MAX_PAGES - 1) partial = true;
+      }
+
       const parsedZaps = receipts
         .map(parseZapReceipt)
         .filter((z): z is ParsedZap => z !== null);
@@ -121,15 +155,24 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all') {
         contentMap.set(evt.id, evt);
       }
 
-      // Enrich zapper profiles (kind 0) for name/picture
+      // Enrich zapper profiles (kind 0) for name/picture — chunked so large
+      // communities aren't silently capped; keep the newest profile per pubkey.
       const zapperPks = [...new Set(parsedZaps.map((z) => z.zapper.pubkey))];
       const profileMap = new Map<string, Record<string, unknown>>();
-      const profileEvents = await nostr.query(
-        [{ kinds: [0], authors: zapperPks.slice(0, 500), limit: 500 }],
-        { signal },
-      ).catch(() => [] as NostrEvent[]);
-      for (const evt of profileEvents) {
-        try { profileMap.set(evt.pubkey, JSON.parse(evt.content)); } catch { /* skip */ }
+      const profileTs = new Map<string, number>();
+      for (let i = 0; i < zapperPks.length; i += CHUNK) {
+        const chunk = zapperPks.slice(i, i + CHUNK);
+        const profileEvents = await nostr.query(
+          [{ kinds: [0], authors: chunk, limit: chunk.length }],
+          { signal },
+        ).catch(() => [] as NostrEvent[]);
+        for (const evt of profileEvents) {
+          if (evt.created_at <= (profileTs.get(evt.pubkey) ?? -1)) continue;
+          try {
+            profileMap.set(evt.pubkey, JSON.parse(evt.content));
+            profileTs.set(evt.pubkey, evt.created_at);
+          } catch { /* skip */ }
+        }
       }
 
       for (const zap of parsedZaps) {
@@ -164,11 +207,14 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all') {
         byMember.set(recipient, arr);
       }
 
-      const memberStats: MemberStats[] = [...byMember.entries()].map(([pubkey, zaps]) => {
+      // Iterate every member so recipients with no zaps still appear with
+      // zeroed stats rather than vanishing from comparisons.
+      const memberStats: MemberStats[] = members.map((member) => {
+        const zaps = byMember.get(member.pubkey) || [];
         const top = groupZapsByContent(zaps)[0];
         return {
-          pubkey,
-          name: nameByPubkey.get(pubkey) || '',
+          pubkey: member.pubkey,
+          name: member.name || '',
           totalEarnings: zaps.reduce((s, z) => s + z.amount, 0),
           totalZaps: zaps.length,
           uniqueZappers: new Set(zaps.map((z) => z.zapper.pubkey)).size,
@@ -203,12 +249,27 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all') {
         hashtagPerformance: [],
       };
 
-      return { aggregate, members: memberStats, lastUpdated: Date.now() };
+      return { aggregate, members: memberStats, lastUpdated: Math.floor(Date.now() / 1000), partial };
     },
-    enabled: !!user?.pubkey && memberKey.length > 0,
+    enabled: enabled && !!user?.pubkey && memberKey.length > 0,
     staleTime: 60 * 1000,
     retry: 1,
   });
+
+  // Member names come from nostr.json, not the relay — overlay the live names
+  // onto cached stats so a rename updates labels without a refetch.
+  const data = useMemo(() => {
+    if (!rawData) return rawData;
+    const names = new Map(
+      (nostrJsonUsers?.users || [])
+        .filter((u) => u.pubkey)
+        .map((u) => [u.pubkey.toLowerCase().trim(), u.name]),
+    );
+    return {
+      ...rawData,
+      members: rawData.members.map((m) => ({ ...m, name: names.get(m.pubkey) ?? m.name })),
+    };
+  }, [rawData, nostrJsonUsers]);
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['community-zap-stats'] });
