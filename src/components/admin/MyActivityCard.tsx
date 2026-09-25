@@ -12,7 +12,7 @@ import { getDefaultRelayUrl } from '@/lib/relay';
 import { useBlossomRelays } from '@/hooks/useBlossomRelays';
 import { useNostr } from '@nostrify/react';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
-import { type BlossomBlob } from '@/lib/blossom';
+import { fetchBlossomList } from '@/lib/blossom';
 
 // ---- Types ----
 
@@ -64,16 +64,16 @@ const PAGE_SIZE = 500;
 const MAX_PAGES = 40; // 20k events safety cap
 
 /**
- * Page backwards through an author's history using `until` (inclusive, so
- * results are deduped by id) until a page yields nothing new.
+ * Page one author filter backwards through history using `until` (inclusive,
+ * so results are deduped by id) until a page yields nothing new.
  *
- * A second kind+author filter for kind 24242 covers blossom blob index
- * events, which some deployments don't expose through the pubkey-only index.
- * Both filters share the same cursor — they cover the same author timeline.
+ * Each filter needs its own cursor: relays apply `limit` per filter, so a
+ * shared cursor computed from a union of pages would skip unread events in
+ * whichever filter's page ended at a later timestamp.
  */
-async function queryAuthorEvents(
+async function paginateAuthorFilter(
   nostr: { query: (filters: NostrFilter[], opts?: { signal?: AbortSignal }) => Promise<NostrEvent[]> },
-  pubkey: string,
+  filter: NostrFilter,
   signal: AbortSignal,
 ): Promise<{ events: NostrEvent[]; partial: boolean }> {
   const events = new Map<string, NostrEvent>();
@@ -81,17 +81,12 @@ async function queryAuthorEvents(
   let partial = false;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const filters: NostrFilter[] = [
-      { authors: [pubkey], limit: PAGE_SIZE },
-      { authors: [pubkey], kinds: [24242], limit: PAGE_SIZE },
-    ];
-    if (until !== undefined) {
-      for (const f of filters) f.until = until;
-    }
+    const f: NostrFilter = { ...filter };
+    if (until !== undefined) f.until = until;
 
     let batch: NostrEvent[];
     try {
-      batch = await nostr.query(filters, { signal });
+      batch = await nostr.query([f], { signal });
     } catch (e) {
       // Timed out mid-pagination — report what we have as partial rather
       // than discarding a large accumulated history.
@@ -151,7 +146,19 @@ export default function MyActivityCard() {
       const pubkey = user!.pubkey.toLowerCase().trim();
       const signal = AbortSignal.timeout(60_000);
 
-      const { events, partial } = await queryAuthorEvents(nostr, pubkey, signal);
+      // The kind-24242 kind+author filter covers blossom blob index events,
+      // which some deployments don't expose through the pubkey-only index.
+      // Its failure or absence is non-fatal: blobs still show via /list, and
+      // the totals are marked partial rather than presented as complete.
+      const [main, blobIndex] = await Promise.all([
+        paginateAuthorFilter(nostr, { authors: [pubkey], limit: PAGE_SIZE }, signal),
+        paginateAuthorFilter(nostr, { authors: [pubkey], kinds: [24242], limit: PAGE_SIZE }, signal)
+          .catch(() => ({ events: [] as NostrEvent[], partial: true })),
+      ]);
+      const eventsById = new Map<string, NostrEvent>();
+      for (const evt of [...main.events, ...blobIndex.events]) eventsById.set(evt.id, evt);
+      const events = [...eventsById.values()];
+      const partial = main.partial || blobIndex.partial;
 
       const byKind: Record<string, number> = {};
       const embedded = { images: 0, videos: 0 };
@@ -203,30 +210,20 @@ export default function MyActivityCard() {
         }
       }
 
-      // Blossom blobs owned by this pubkey (public list endpoint)
+      // Blossom blobs owned by this pubkey — anonymous /list first, with a
+      // signed kind-24242 retry when the server requires BUD authorization.
       const blossom = { count: 0, totalSize: 0, images: 0, videos: 0, other: 0 };
-      let blossomUnavailable = false;
-      if (!blossomBase) {
-        blossomUnavailable = true;
-      } else {
-        try {
-          const res = await fetch(`${blossomBase.replace(/\/$/, '')}/list/${pubkey}`, {
-            signal: AbortSignal.timeout(10_000),
-          });
-          if (res.ok) {
-            const blobs = (await res.json()) as BlossomBlob[];
-            for (const blob of blobs) {
-              blossom.count++;
-              blossom.totalSize += blob.size || 0;
-              if (blob.type?.startsWith('image/')) blossom.images++;
-              else if (blob.type?.startsWith('video/')) blossom.videos++;
-              else blossom.other++;
-            }
-          } else {
-            blossomUnavailable = true;
-          }
-        } catch {
-          blossomUnavailable = true;
+      const blobs = blossomBase
+        ? await fetchBlossomList(blossomBase, pubkey, user!.signer)
+        : null;
+      const blossomUnavailable = blobs === null;
+      if (blobs) {
+        for (const blob of blobs) {
+          blossom.count++;
+          blossom.totalSize += blob.size || 0;
+          if (blob.type?.startsWith('image/')) blossom.images++;
+          else if (blob.type?.startsWith('video/')) blossom.videos++;
+          else blossom.other++;
         }
       }
 
