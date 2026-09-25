@@ -166,7 +166,7 @@ export default function AdminZaplytics() {
   const communityAggregate = communityData?.aggregate;
   const communityMembers = communityData?.members || [];
   const lastUpdatedLabel = communityData
-    ? `Last updated ${Math.round((Date.now() / 1000 - communityData.lastUpdated) / 60)} min ago${communityData.partial ? ' · totals are a lower bound' : ''}`
+    ? `Last updated ${Math.round((Date.now() / 1000 - communityData.lastUpdated) / 60)} min ago${communityData.partial ? ' · totals are a lower bound' : communityData.suspectedPartial ? ' · totals may be incomplete' : ''}${communityData.enrichmentPartial ? ' · some details unavailable' : ''}`
     : '';
 
   return (

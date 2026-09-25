@@ -44,6 +44,14 @@ export interface CommunityZapStats {
   lastUpdated: number;
   /** True when pagination hit a bound and totals are a lower bound. */
   partial?: boolean;
+  /**
+   * True when a boundary timestamp may hold more receipts than the relay's
+   * page size and probes couldn't disprove it — possible incompleteness,
+   * distinct from confirmed truncation.
+   */
+  suspectedPartial?: boolean;
+  /** True when content/profile enrichment lookups failed or timed out. */
+  enrichmentPartial?: boolean;
 }
 
 export type CommunityTimeRange = '24h' | '7d' | '30d' | 'all';
@@ -51,10 +59,6 @@ export type CommunityTimeRange = '24h' | '7d' | '30d' | 'all';
 const RECEIPT_LIMIT = 5000;
 const MAX_PAGES = 20; // 100k receipts safety cap
 const CHUNK = 150;
-// Smallest page size worth treating as a possible relay cap. Real caps are
-// far higher (strfry/nostream ~500+, badger clamps at 250) — below this, a
-// "full" page is just a small history, not truncation.
-const MIN_SUSPICIOUS_PAGE = 100;
 
 /** '30d' isn't a single-pubkey TimeRange — express it as a custom window. */
 function toRangeParams(timeRange: CommunityTimeRange): { tr: TimeRange; custom?: CustomDateRange } {
@@ -66,16 +70,22 @@ function toRangeParams(timeRange: CommunityTimeRange): { tr: TimeRange; custom?:
   return { tr: timeRange };
 }
 
-async function queryChunked(nostr: NStore, ids: string[], signal: AbortSignal): Promise<NostrEvent[]> {
+async function queryChunked(
+  nostr: NStore,
+  ids: string[],
+  signal: AbortSignal,
+): Promise<{ events: NostrEvent[]; complete: boolean }> {
   const out: NostrEvent[] = [];
+  let complete = true;
   for (let i = 0; i < ids.length; i += CHUNK) {
     try {
       out.push(...(await nostr.query([{ ids: ids.slice(i, i + CHUNK) }], { signal })));
     } catch {
       // chunk failed — continue with what resolved
+      complete = false;
     }
   }
-  return out;
+  return { events: out, complete };
 }
 
 export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enabled = true) {
@@ -112,6 +122,9 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
       const receipts: ZapReceipt[] = [];
       let cursor: number | undefined = until;
       let partial = false;
+      // Irreducible same-second ambiguity — the boundary may hide events
+      // that no filter can reach, but truncation isn't proven either.
+      let suspectedPartial = false;
       // Largest page the relay has actually returned — its effective page cap,
       // which may be lower than the requested limit on some backends.
       let pageCapacity = 0;
@@ -153,50 +166,64 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         }
 
         if (newOnPage === 0) {
-          // A terminating page is ambiguous only when it's as large as the
-          // biggest page seen AND that size could be a real relay cap: then
-          // the boundary timestamp may hold more events than one page can
-          // carry (filters have no intra-timestamp cursor). Probe that
-          // timestamp once per member — narrow #p filters drain a crowded
-          // second — and resume strictly below it when it proves complete.
-          if (
-            batch.length > 0 &&
-            batch.length >= pageCapacity &&
-            pageCapacity >= MIN_SUSPICIOUS_PAGE &&
-            cursor !== undefined
-          ) {
-            let boundaryComplete = true;
-            for (const memberPk of memberSet) {
-              let probe: NostrEvent[];
-              try {
-                probe = await nostr.query(
-                  [{
-                    kinds: [9735],
-                    '#p': [memberPk],
-                    limit: RECEIPT_LIMIT,
-                    since: cursor,
-                    until: cursor,
-                  }],
-                  { signal },
-                );
-              } catch {
-                boundaryComplete = false;
-                break;
+          // A terminating page as large as the biggest page seen is
+          // ambiguous: the boundary timestamp may hold more events than the
+          // relay's effective page size, and filters have no intra-timestamp
+          // cursor. Probe the timestamp with a limit one larger than the
+          // observed page — a bigger response proves the page wasn't
+          // truncated; a smaller one fully enumerates the boundary; an equal
+          // one falls back to per-member probes, which drain a crowded
+          // second through narrow #p filters. A member slice filling the
+          // observed page is the irreducible case: flagged "may be
+          // incomplete" rather than asserted as a lower bound.
+          if (batch.length > 0 && batch.length >= pageCapacity && cursor !== undefined) {
+            let canResume = false;
+            try {
+              const tProbe = await nostr.query(
+                [{
+                  kinds: [9735],
+                  '#p': [...memberSet],
+                  limit: pageCapacity + 1,
+                  since: cursor,
+                  until: cursor,
+                }],
+                { signal },
+              );
+              if (tProbe.length > pageCapacity) {
+                break; // relay cap exceeds the observed page size — complete
               }
-              // One member alone filling a page at a single timestamp can't
-              // be disambiguated further — report totals as a lower bound.
-              if (probe.length >= pageCapacity) {
-                boundaryComplete = false;
-                break;
+              for (const evt of tProbe) ingest(evt);
+              canResume = true;
+              if (tProbe.length === pageCapacity) {
+                for (const memberPk of memberSet) {
+                  const probe = await nostr.query(
+                    [{
+                      kinds: [9735],
+                      '#p': [memberPk],
+                      limit: pageCapacity + 1,
+                      since: cursor,
+                      until: cursor,
+                    }],
+                    { signal },
+                  );
+                  for (const evt of probe) ingest(evt);
+                  if (probe.length >= pageCapacity) suspectedPartial = true;
+                }
               }
-              for (const evt of probe) ingest(evt);
+            } catch {
+              // Couldn't disambiguate — abort means pagination definitely
+              // stopped early; anything else leaves the doubt unresolved.
+              if (signal.aborted) partial = true;
+              else suspectedPartial = true;
             }
-            if (!boundaryComplete) {
-              partial = true;
-            } else {
+
+            if (canResume && page < MAX_PAGES - 1) {
               cursor = cursor - 1;
               continue;
             }
+            // Boundary resolved but the page budget is spent — any history
+            // below it is confirmed unreachable within this query.
+            if (canResume) partial = true;
           }
           break;
         }
@@ -213,14 +240,18 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
       // Enrichment gets its own time budget: pagination's signal may already
       // be aborted after a timeout, and reusing it would silently starve the
       // content and profile lookups for receipts that were fetched fine.
-      const enrichSignal = AbortSignal.timeout(30_000);
+      // A fresh 60s preserves the previous shared-budget worst case.
+      const enrichSignal = AbortSignal.timeout(60_000);
+      let enrichmentPartial = false;
 
       // Enrich zapped events (e-tags → real kind/content/author/created_at)
       const eIds = [...new Set(
         parsedZaps.map((z) => z.zappedEvent?.id).filter((id): id is string => !!id),
       )];
       const contentMap = new Map<string, NostrEvent>();
-      for (const evt of await queryChunked(nostr, eIds, enrichSignal)) {
+      const contentResult = await queryChunked(nostr, eIds, enrichSignal);
+      if (!contentResult.complete) enrichmentPartial = true;
+      for (const evt of contentResult.events) {
         contentMap.set(evt.id, evt);
       }
 
@@ -234,7 +265,10 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         const profileEvents = await nostr.query(
           [{ kinds: [0], authors: chunk, limit: chunk.length }],
           { signal: enrichSignal },
-        ).catch(() => [] as NostrEvent[]);
+        ).catch(() => {
+          enrichmentPartial = true;
+          return [] as NostrEvent[];
+        });
         for (const evt of profileEvents) {
           if (evt.created_at <= (profileTs.get(evt.pubkey) ?? -1)) continue;
           try {
@@ -318,7 +352,14 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         hashtagPerformance: [],
       };
 
-      return { aggregate, members: memberStats, lastUpdated: Math.floor(Date.now() / 1000), partial };
+      return {
+        aggregate,
+        members: memberStats,
+        lastUpdated: Math.floor(Date.now() / 1000),
+        partial,
+        suspectedPartial,
+        enrichmentPartial,
+      };
     },
     enabled: enabled && !!user?.pubkey && memberKey.length > 0,
     staleTime: 60 * 1000,
