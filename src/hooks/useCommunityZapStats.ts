@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrJsonUsers } from '@/hooks/useNostrJsonUsers';
+import { getDefaultRelayUrl } from '@/lib/relay';
 import type { NostrEvent, NostrFilter, NStore } from '@nostrify/nostrify';
 import type {
   AnalyticsData,
@@ -83,9 +84,12 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
     .filter((u) => u.pubkey)
     .map((u) => ({ name: u.name, pubkey: u.pubkey.toLowerCase().trim() }));
   const memberKey = members.map((m) => m.pubkey).sort().join(',');
+  // reqRouter sends reads to getDefaultRelayUrl(); the key should encode that
+  // dependency so these stats can never be mistaken for another relay's.
+  const relayUrl = getDefaultRelayUrl();
 
   const { data: rawData, isLoading, error } = useQuery({
-    queryKey: ['community-zap-stats', memberKey, timeRange],
+    queryKey: ['community-zap-stats', memberKey, timeRange, relayUrl],
     queryFn: async (): Promise<CommunityZapStats> => {
       const memberSet = new Set(members.map((m) => m.pubkey));
       if (memberSet.size === 0) {
@@ -104,6 +108,9 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
       const receipts: ZapReceipt[] = [];
       let cursor: number | undefined = until;
       let partial = false;
+      // Largest page the relay has actually returned — its effective page cap,
+      // which may be lower than the requested limit on some backends.
+      let pageCapacity = 0;
 
       for (let page = 0; page < MAX_PAGES; page++) {
         const filter: NostrFilter = {
@@ -137,7 +144,16 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
           if (isValidZapReceipt(evt)) receipts.push(evt as ZapReceipt);
         }
 
-        if (newOnPage === 0 || (since > 0 && oldest <= since)) break;
+        if (newOnPage === 0) {
+          // A full page of only repeats means the boundary timestamp holds
+          // more events than the relay's page size — nothing below it is
+          // reachable, so totals are a lower bound. A short all-repeats page
+          // means the relay genuinely returned everything.
+          if (batch.length > 0 && batch.length >= pageCapacity) partial = true;
+          break;
+        }
+        pageCapacity = Math.max(pageCapacity, batch.length);
+        if (since > 0 && oldest <= since) break;
         cursor = oldest;
         if (page === MAX_PAGES - 1) partial = true;
       }
@@ -146,12 +162,17 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         .map(parseZapReceipt)
         .filter((z): z is ParsedZap => z !== null);
 
+      // Enrichment gets its own time budget: pagination's signal may already
+      // be aborted after a timeout, and reusing it would silently starve the
+      // content and profile lookups for receipts that were fetched fine.
+      const enrichSignal = AbortSignal.timeout(30_000);
+
       // Enrich zapped events (e-tags → real kind/content/author/created_at)
       const eIds = [...new Set(
         parsedZaps.map((z) => z.zappedEvent?.id).filter((id): id is string => !!id),
       )];
       const contentMap = new Map<string, NostrEvent>();
-      for (const evt of await queryChunked(nostr, eIds, signal)) {
+      for (const evt of await queryChunked(nostr, eIds, enrichSignal)) {
         contentMap.set(evt.id, evt);
       }
 
@@ -164,7 +185,7 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         const chunk = zapperPks.slice(i, i + CHUNK);
         const profileEvents = await nostr.query(
           [{ kinds: [0], authors: chunk, limit: chunk.length }],
-          { signal },
+          { signal: enrichSignal },
         ).catch(() => [] as NostrEvent[]);
         for (const evt of profileEvents) {
           if (evt.created_at <= (profileTs.get(evt.pubkey) ?? -1)) continue;
