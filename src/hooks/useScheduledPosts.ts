@@ -240,6 +240,27 @@ export function useDeleteScheduledPost() {
 }
 
 /**
+ * Retry a failed scheduled post. Preserves the signed event and lets the
+ * user choose a new schedule time (defaults to "post now").
+ */
+export function useRetryScheduledPost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, scheduledFor }: { id: string; scheduledFor: Date }) => {
+      const result = await fetchWithNip98(`/scheduler/retry?id=${id}`, 'POST', {
+        scheduled_for: scheduledFor.toISOString(),
+      });
+      return result as ScheduledPost;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts-stats'] });
+    },
+  });
+}
+
+/**
  * Clear scheduled post history for a specific status (published or failed)
  */
 export function useClearScheduledPostsHistory() {
