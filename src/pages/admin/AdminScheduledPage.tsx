@@ -56,6 +56,8 @@ import {
 } from '@/lib/scheduledPostPreview';
 import { CalendarGrid, type CalendarItem } from '@/components/admin/CalendarGrid';
 import { SchedulePicker, type ScheduleConfig } from '@/components/admin/SchedulePicker';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 interface ScheduledPostCardProps {
   post: ScheduledPost;
@@ -76,15 +78,18 @@ function ScheduledPostCard({ post, onDelete, onEdit, onRetry }: ScheduledPostCar
   const repeatInterval = post.signed_event.tags?.find(([t]) => t === 'repeat_interval')?.[1];
   const hasRepeat = repeatTotal && repeatIndex && repeatInterval && Number(repeatTotal) > 1;
 
-  // Compute the end date of the series from the signed event's created_at,
-  // which carries the original scheduled time. Retry/reschedule changes
-  // scheduled_for but cannot touch the signed event, so created_at is the
-  // only base that stays correct for a rescheduled series entry.
+  // "ends" means the latest scheduled publication in the series. Derive the
+  // original series end from the signed event's created_at (immutable — a
+  // retry changes scheduled_for but not the signed event), then clamp to
+  // this entry's scheduled_for: an entry retried past the original end is
+  // itself the last publication, so "ends" should show its new date.
   let repeatEndDate: Date | null = null;
   if (hasRepeat) {
     const remaining = Number(repeatTotal) - Number(repeatIndex) - 1;
+    const originalEnd =
+      post.signed_event.created_at * 1000 + remaining * Number(repeatInterval) * 1000;
     repeatEndDate = new Date(
-      post.signed_event.created_at * 1000 + remaining * Number(repeatInterval) * 1000,
+      Math.max(originalEnd, new Date(post.scheduled_for).getTime()),
     );
   }
 
@@ -457,7 +462,7 @@ interface RetryScheduledPostDialogProps {
   post: ScheduledPost | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRetry: (id: string, scheduledFor: Date) => void;
+  onRetry: (post: ScheduledPost, scheduledFor: Date, freshCopy: boolean) => void;
   isPending?: boolean;
 }
 
@@ -475,6 +480,10 @@ function RetryScheduledPostDialog({
     enabled: true,
     scheduledFor: new Date(),
   });
+  const [preserveSignature, setPreserveSignature] = useState(true);
+  const signerAvailable =
+    typeof window !== 'undefined' &&
+    typeof (window as Window & { nostr?: { signEvent?: unknown } }).nostr?.signEvent === 'function';
 
   if (!post) return null;
 
@@ -487,14 +496,26 @@ function RetryScheduledPostDialog({
             Retry Failed Post
           </DialogTitle>
           <DialogDescription>
-            Choose when to retry this failed post. The original signed event —
-            including its timestamp — is preserved, so the post keeps its
-            original position in timestamp-sorted feeds.
+            Choose when to retry this failed post.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <SchedulePicker value={scheduleConfig} onChange={setScheduleConfig} />
+
+          <div className="flex items-start gap-2">
+            <Switch
+              id="preserve-signature"
+              checked={preserveSignature || !signerAvailable}
+              onCheckedChange={setPreserveSignature}
+              disabled={!signerAvailable}
+            />
+            <Label htmlFor="preserve-signature" className="text-xs leading-snug cursor-pointer">
+              Keep original signature — publishes the signed event unchanged. The post keeps
+              its original timestamp, so it lands at its original position in feeds. Turn off
+              to sign a fresh copy stamped with the retry time (requires your signer).
+            </Label>
+          </div>
         </div>
 
         <DialogFooter className="gap-2">
@@ -507,7 +528,7 @@ function RetryScheduledPostDialog({
               // A non-future value means "post now" — send the click time,
               // not the dialog-open time held in scheduleConfig.
               const t = scheduleConfig.scheduledFor;
-              onRetry(post.id, t && t.getTime() > Date.now() ? t : new Date());
+              onRetry(post, t && t.getTime() > Date.now() ? t : new Date(), !preserveSignature);
               onOpenChange(false);
             }}
             disabled={isPending}
@@ -650,11 +671,11 @@ export default function AdminScheduledPage() {
     setRetryOpen(true);
   };
 
-  const handleRetry = async (id: string, scheduledFor: Date) => {
+  const handleRetry = async (post: ScheduledPost, scheduledFor: Date, freshCopy: boolean) => {
     if (!user?.pubkey) return;
 
     try {
-      await retryPost({ id, scheduledFor });
+      await retryPost({ post, scheduledFor, freshCopy });
       toast({
         title: 'Retry scheduled',
         description: scheduledFor <= new Date()

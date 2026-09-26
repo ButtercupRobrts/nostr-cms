@@ -240,18 +240,55 @@ export function useDeleteScheduledPost() {
 }
 
 /**
- * Retry a failed scheduled post. Preserves the signed event and lets the
- * user choose a new schedule time (defaults to "post now").
+ * Retry a failed scheduled post. Two modes:
+ * - Preserve (default): POST /scheduler/retry keeps the signed event —
+ *   including its original created_at, so it publishes at its original
+ *   position in timestamp-sorted feeds.
+ * - Fresh copy: re-signs a clone with created_at set to the retry schedule
+ *   (and refreshes any `published_at` tag), schedules it via the existing
+ *   POST /scheduler/schedule, and deletes the failed original. Requires the
+ *   NIP-07 signer at retry time; the new event lands at the retry position.
  */
 export function useRetryScheduledPost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, scheduledFor }: { id: string; scheduledFor: Date }) => {
-      const result = await fetchWithNip98(`/scheduler/retry?id=${id}`, 'POST', {
-        scheduled_for: scheduledFor.toISOString(),
+    mutationFn: async ({
+      post,
+      scheduledFor,
+      freshCopy,
+    }: {
+      post: ScheduledPost;
+      scheduledFor: Date;
+      freshCopy?: boolean;
+    }) => {
+      if (!freshCopy) {
+        const result = await fetchWithNip98(`/scheduler/retry?id=${post.id}`, 'POST', {
+          scheduled_for: scheduledFor.toISOString(),
+        });
+        return result as ScheduledPost;
+      }
+
+      const nostr = (window as Window & { nostr?: NostrSigner }).nostr;
+      if (!nostr) {
+        throw new Error('Nostr extension not found');
+      }
+      const createdAt = Math.floor(scheduledFor.getTime() / 1000);
+      const { id: _id, sig: _sig, ...unsigned } = post.signed_event;
+      unsigned.created_at = createdAt;
+      unsigned.tags = unsigned.tags.map((t) =>
+        t[0] === 'published_at' ? ['published_at', String(createdAt)] : t,
+      );
+      const signedEvent = await nostr.signEvent(unsigned);
+
+      await schedulePostViaApi({
+        signedEvent,
+        relays: post.relays,
+        scheduledFor,
       });
-      return result as ScheduledPost;
+      // The failed original is superseded by the fresh copy.
+      await fetchWithNip98(`/scheduler/delete?id=${post.id}`, 'DELETE');
+      return post;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
