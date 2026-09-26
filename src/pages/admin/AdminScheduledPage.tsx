@@ -4,7 +4,7 @@
  * View, delete, and monitor scheduled Kind 1 notes and Kind 30023 blog posts
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNavigate } from 'react-router-dom';
@@ -76,12 +76,15 @@ function ScheduledPostCard({ post, onDelete, onEdit, onRetry }: ScheduledPostCar
   const repeatInterval = post.signed_event.tags?.find(([t]) => t === 'repeat_interval')?.[1];
   const hasRepeat = repeatTotal && repeatIndex && repeatInterval && Number(repeatTotal) > 1;
 
-  // Compute the end date of the series: this post's date + remaining posts × interval
+  // Compute the end date of the series from the signed event's created_at,
+  // which carries the original scheduled time. Retry/reschedule changes
+  // scheduled_for but cannot touch the signed event, so created_at is the
+  // only base that stays correct for a rescheduled series entry.
   let repeatEndDate: Date | null = null;
   if (hasRepeat) {
     const remaining = Number(repeatTotal) - Number(repeatIndex) - 1;
     repeatEndDate = new Date(
-      new Date(post.scheduled_for).getTime() + remaining * Number(repeatInterval) * 1000,
+      post.signed_event.created_at * 1000 + remaining * Number(repeatInterval) * 1000,
     );
   }
 
@@ -465,17 +468,13 @@ function RetryScheduledPostDialog({
   onRetry,
   isPending = false,
 }: RetryScheduledPostDialogProps) {
+  // The parent remounts this dialog via `key` on every open, so this state is
+  // always fresh — there is no stale SchedulePicker input or open-time
+  // scheduledFor left over from a previous retry session.
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>({
     enabled: true,
     scheduledFor: new Date(),
   });
-
-  // Reset to "now" whenever the dialog opens for a new post
-  useEffect(() => {
-    if (open && post) {
-      setScheduleConfig({ enabled: true, scheduledFor: new Date() });
-    }
-  }, [open, post]);
 
   if (!post) return null;
 
@@ -488,8 +487,9 @@ function RetryScheduledPostDialog({
             Retry Failed Post
           </DialogTitle>
           <DialogDescription>
-            Choose when to retry this failed post. The original signed event will be
-            preserved.
+            Choose when to retry this failed post. The original signed event —
+            including its timestamp — is preserved, so the post keeps its
+            original position in timestamp-sorted feeds.
           </DialogDescription>
         </DialogHeader>
 
@@ -504,7 +504,10 @@ function RetryScheduledPostDialog({
           <Button
             variant="default"
             onClick={() => {
-              onRetry(post.id, scheduleConfig.scheduledFor ?? new Date());
+              // A non-future value means "post now" — send the click time,
+              // not the dialog-open time held in scheduleConfig.
+              const t = scheduleConfig.scheduledFor;
+              onRetry(post.id, t && t.getTime() > Date.now() ? t : new Date());
               onOpenChange(false);
             }}
             disabled={isPending}
@@ -580,6 +583,8 @@ export default function AdminScheduledPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [retryPostState, setRetryPost] = useState<ScheduledPost | null>(null);
   const [retryOpen, setRetryOpen] = useState(false);
+  // Remounts the retry dialog per open so its SchedulePicker starts clean.
+  const [retrySeq, setRetrySeq] = useState(0);
   const [dayDialogDate, setDayDialogDate] = useState<Date | null>(null);
   const [dayDialogItems, setDayDialogItems] = useState<ScheduledPostCalendarItemData[]>([]);
   const [dayDialogOpen, setDayDialogOpen] = useState(false);
@@ -641,6 +646,7 @@ export default function AdminScheduledPage() {
 
   const handleRetryClick = (post: ScheduledPost) => {
     setRetryPost(post);
+    setRetrySeq((n) => n + 1);
     setRetryOpen(true);
   };
 
@@ -989,6 +995,7 @@ export default function AdminScheduledPage() {
       />
 
       <RetryScheduledPostDialog
+        key={retrySeq}
         post={retryPostState}
         open={retryOpen}
         onOpenChange={setRetryOpen}
