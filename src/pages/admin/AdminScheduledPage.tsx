@@ -675,7 +675,19 @@ export default function AdminScheduledPage() {
     if (!user?.pubkey) return;
 
     try {
-      await retryPost({ post, scheduledFor, freshCopy });
+      const result = await retryPost({ post, scheduledFor, freshCopy });
+      if (result.cleanupFailed) {
+        // The fresh copy was scheduled but the failed original could not be
+        // removed — warn so the user deletes it instead of retrying again
+        // into a duplicate.
+        toast({
+          title: 'Scheduled — cleanup needed',
+          description:
+            'The fresh copy was scheduled, but the failed original could not be removed. Delete the failed entry to avoid a duplicate.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: 'Retry scheduled',
         description: scheduledFor <= new Date()
