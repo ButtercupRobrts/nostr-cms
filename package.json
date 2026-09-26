@@ -104,7 +104,8 @@
     "@humanfs/node": "0.16.8",
     "minimatch@9": "9.0.9",
     "markdown-it": "14.3.2",
-    "@babel/core": "7.29.7"
+    "@babel/core": "7.29.7",
+    "brace-expansion@<2": "1.1.21"
   },
   "pnpm": {
     "overrides": {
@@ -123,7 +124,8 @@
       "@humanfs/node": "0.16.8",
       "minimatch@9": "9.0.9",
       "markdown-it": "14.3.2",
-      "@babel/core": "7.29.7"
+      "@babel/core": "7.29.7",
+      "brace-expansion@<2": "1.1.21"
     }
   },
   "devDependencies": {
