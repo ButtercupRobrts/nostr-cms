@@ -16,9 +16,16 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",
       port: 8080,
+      allowedHosts: ["buttercup.exe.xyz"],
       proxy: {
         '/api': {
           target: proxyTarget,
+          changeOrigin: true,
+        },
+        // Serve the real admin list in dev — the static server on :8000 has
+        // no CORS headers, so proxy it same-origin instead of fetching direct.
+        '/.well-known/nostr.json': {
+          target: 'http://localhost:8000',
           changeOrigin: true,
         },
       },
