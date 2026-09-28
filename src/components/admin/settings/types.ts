@@ -87,7 +87,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   heroBackground: '',
   heroBackgroundType: 'none',
   heroBackgroundColor: '#1a1a2e',
-  heroTextColor: '#000000',
+  heroTextColor: '#ffffff',
   heroBanner: '',
   heroButtons: DEFAULT_HERO_BUTTONS,
   showEvents: true,

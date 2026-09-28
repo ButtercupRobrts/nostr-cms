@@ -1,7 +1,10 @@
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import DOMPurify from 'dompurify';
 import { remarkNostrEmbed } from '@/lib/remarkNostrEmbed';
+import { sanitizeSchema } from '@/lib/sanitizeSchema';
 import { NostrEventEmbed } from '@/components/NostrEventEmbed';
 import { useAppContext } from '@/hooks/useAppContext';
 
@@ -27,7 +30,15 @@ export function PageContent({ content, className }: PageContentProps) {
   const isHtml = content.trim().startsWith('<');
 
   if (isHtml) {
-    return <div className={className} dangerouslySetInnerHTML={{ __html: content }} />;
+    return <div className={className} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(content, {
+      USE_PROFILES: { html: true },
+      ADD_TAGS: ['iframe', 'style', 'svg'],
+      ADD_ATTR: [
+        'target', 'allow', 'allowfullscreen', 'frameborder',
+        'scrolling', 'width', 'height', 'referrerpolicy',
+        'loading', 'sandbox',
+      ],
+    }) }} />;
   }
 
   // Map the custom <nostr-embed> element (produced by remarkNostrEmbed and
@@ -44,7 +55,7 @@ export function PageContent({ content, className }: PageContentProps) {
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkNostrEmbed]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={[[rehypeRaw, { allowDangerousHtml: true }], [rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
         {content}

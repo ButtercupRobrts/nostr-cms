@@ -82,9 +82,11 @@ function HeroSection() {
     heroTitle: config.siteConfig?.heroTitle || 'Welcome to Our Community',
     heroSubtitle: config.siteConfig?.heroSubtitle || 'Join us for amazing meetups and events',
     heroBackground: config.siteConfig?.heroBackground || '',
-    heroBackgroundType: config.siteConfig?.heroBackgroundType ?? 'none',
+    // Older config events may contain the image URL but not the newer type tag.
+    // Preserve the configured image instead of silently rendering no background.
+    heroBackgroundType: config.siteConfig?.heroBackgroundType || (config.siteConfig?.heroBackground ? 'image' : 'none'),
     heroBackgroundColor: config.siteConfig?.heroBackgroundColor || '#1a1a2e',
-    heroTextColor: config.siteConfig?.heroTextColor || '#000000',
+    heroTextColor: config.siteConfig?.heroTextColor || '#ffffff',
     heroBanner: config.siteConfig?.heroBanner || '',
   };
 
@@ -564,7 +566,9 @@ const Index = ({ preview = false }: { preview?: boolean } = {}) => {
   // Built-in IDs: hero, events, blog, feed.
   // Page IDs: page:<path> (e.g. page:/about).
   // Reconcile: keep known IDs in order, append any page sections not yet in the order.
-  const configuredOrder = config.siteConfig?.homepageSectionOrder ?? [...BUILTIN_HOMEPAGE_SECTION_IDS];
+  const configuredOrder = config.siteConfig?.homepageSectionOrder?.length
+    ? config.siteConfig.homepageSectionOrder
+    : [...BUILTIN_HOMEPAGE_SECTION_IDS];
   const pageIds = homepagePages.map(p => `page:${p.path}`);
   const knownIds = new Set([...BUILTIN_HOMEPAGE_SECTION_IDS, ...pageIds]);
   const sectionOrder = [

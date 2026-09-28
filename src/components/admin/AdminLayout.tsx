@@ -31,6 +31,10 @@ import {
   RefreshCw,
   Database,
   Users,
+  Settings,
+  Rss,
+  KeyRound,
+  User,
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -98,10 +102,16 @@ export default function AdminLayout() {
     { name: 'Events', href: '/admin/events', icon: Calendar },
     { name: 'Forms', href: '/admin/forms', icon: ClipboardList },
     { name: 'Pages', href: '/admin/pages', icon: FileCode },
+    { name: 'Feed', href: '/admin/feed', icon: Rss },
     ...(canAccessExplorer ? [{ name: 'Relay Explorer', href: '/admin/explorer', icon: Database }] : []),
+    ...(canAccessExplorer ? [{ name: 'Relay Access', href: '/admin/relay-access', icon: KeyRound }] : []),
     { name: 'Sync Content', href: '/admin/sync-content', icon: RefreshCw },
     { name: 'Follow Backup', href: '/admin/follow-backup', icon: Users },
-    ...(canAccessSettings ? [{ name: 'Admin Settings', href: '/admin/system-settings', icon: Shield }] : []),
+    ...(canAccessSettings ? [
+      { name: 'Site Settings', href: '/admin/settings', icon: Settings },
+      { name: 'System Settings', href: '/admin/system-settings', icon: Shield },
+    ] : []),
+    { name: 'Profile', href: '/admin/profile', icon: User },
     { name: 'Help', href: '/admin/help', icon: HelpCircle },
   ];
 

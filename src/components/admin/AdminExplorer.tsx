@@ -13,7 +13,8 @@ import { AuthorInfo } from '@/components/AuthorInfo';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useToast } from '@/hooks/useToast';
-import { getSwarmAdminApiUrl } from '@/lib/relay';
+import { getMasterPubkey, getSwarmAdminApiUrl } from '@/lib/relay';
+import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { RefreshCw, Search, ChevronRight, Eye, X, Copy, ChevronDown, Repeat2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { kindLabel, categorizeKinds } from '@/lib/kinds';
@@ -119,8 +120,33 @@ async function parseError(response: Response): Promise<string> {
   return text || `${response.status} ${response.statusText}`;
 }
 
+function buildRelayFilter(selectedKinds: number[], authorFilter: string, limit: number) {
+  const filter: { kinds?: number[]; authors?: string[]; limit: number } = { limit };
+  if (selectedKinds.length > 0) filter.kinds = selectedKinds;
+  if (authorFilter) filter.authors = [authorFilter];
+  return filter;
+}
+
+function statsFromEvents(events: EventSummary[]): RelayStats {
+  const byKind: Record<string, number> = {};
+  const byPubkey: Record<string, number> = {};
+  for (const event of events) {
+    byKind[String(event.kind)] = (byKind[String(event.kind)] || 0) + 1;
+    byPubkey[event.pubkey] = (byPubkey[event.pubkey] || 0) + 1;
+  }
+  return {
+    totalEvents: events.length,
+    uniquePubkeys: Object.keys(byPubkey).length,
+    byKind,
+    byPubkey,
+    knownPubkeys: {},
+    ownerPubkey: getMasterPubkey(),
+  };
+}
+
 function useAdminApi() {
   const { user } = useCurrentUser();
+  const { nostr } = useDefaultRelay();
 
   const adminApiBase = getSwarmAdminApiUrl();
   const adminApiBases = useMemo(() => {
@@ -157,7 +183,7 @@ function useAdminApi() {
     throw new Error('Unable to reach relay admin API');
   }, [adminApiBases, ensureAdminSession]);
 
-  return { fetchAdminApi, user };
+  return { fetchAdminApi, nostr, user };
 }
 
 // ---- Author display (username, not hex) ----
@@ -645,7 +671,7 @@ function EventBrowser({ stats, authorFilter, setAuthorFilter }: {
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { fetchAdminApi } = useAdminApi();
+  const { fetchAdminApi, nostr } = useAdminApi();
 
   // selectedKinds: empty array means "all kinds". When non-empty, only
   // those kinds are queried. All available kinds are ticked on by default.
@@ -664,9 +690,26 @@ function EventBrowser({ stats, authorFilter, setAuthorFilter }: {
   const { data: eventsData, isLoading, error } = useQuery({
     queryKey: ['relay-explorer-events', selectedKinds, authorFilter, limit],
     queryFn: async () => {
-      const response = await fetchAdminApi(`/events?${queryParams}`);
-      if (!response.ok) throw new Error(await parseError(response));
-      return response.json() as Promise<EventsResponse>;
+      try {
+        const response = await fetchAdminApi(`/events?${queryParams}`);
+        if (response.ok) return response.json() as Promise<EventsResponse>;
+        if (response.status !== 404 && response.status !== 401) {
+          throw new Error(await parseError(response));
+        }
+      } catch (error) {
+        if (!nostr) throw error;
+      }
+
+      if (!nostr) throw new Error('Relay connection is unavailable');
+      const relayEvents = await nostr.query([buildRelayFilter(selectedKinds, authorFilter, limit)], {
+        signal: AbortSignal.timeout(15000),
+      });
+      const events = relayEvents
+        .sort((a, b) => b.created_at - a.created_at)
+        .map(({ id, pubkey, kind, created_at, content, tags }) => ({
+          id, pubkey, kind, created_at, content, tags,
+        }));
+      return { events, count: events.length, limit };
     },
   });
 
@@ -906,16 +949,32 @@ function EventBrowser({ stats, authorFilter, setAuthorFilter }: {
 export default function AdminExplorer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { fetchAdminApi, user } = useAdminApi();
+  const { fetchAdminApi, nostr, user } = useAdminApi();
+  const { isMaster, isLoading: authLoading } = useAdminAuth(user?.pubkey);
 
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['relay-explorer-stats'],
     queryFn: async () => {
-      const response = await fetchAdminApi('/stats');
-      if (!response.ok) throw new Error(await parseError(response));
-      return response.json() as Promise<RelayStats>;
+      try {
+        const response = await fetchAdminApi('/stats');
+        if (response.ok) return response.json() as Promise<RelayStats>;
+        if (response.status !== 404 && response.status !== 401) {
+          throw new Error(await parseError(response));
+        }
+      } catch (error) {
+        if (!nostr) throw error;
+      }
+
+      if (!nostr) throw new Error('Relay connection is unavailable');
+      const relayEvents = await nostr.query([{ limit: 5000 }], {
+        signal: AbortSignal.timeout(30000),
+      });
+      const events = relayEvents.map(({ id, pubkey, kind, created_at, content, tags }) => ({
+        id, pubkey, kind, created_at, content, tags,
+      }));
+      return statsFromEvents(events);
     },
-    enabled: !!user?.pubkey,
+    enabled: !!user?.pubkey && isMaster,
   });
 
   const statsErrorShownRef = useRef(false);
@@ -934,6 +993,20 @@ export default function AdminExplorer() {
   };
 
   const [authorFilter, setAuthorFilter] = useState<string>('');
+
+  if (authLoading) {
+    return <div className="flex items-center justify-center py-12"><RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  }
+
+  if (!isMaster) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Relay Explorer is available only to the relay operator.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
