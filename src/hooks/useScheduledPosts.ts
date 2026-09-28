@@ -24,7 +24,12 @@ const API_BASE = getSchedulerApiUrl();
  * Fetch wrapper that adds NIP-98 Authorization header
  */
 async function fetchWithNip98(urlStr: string, method: string, body?: unknown) {
-  const url = urlStr.startsWith('http') ? urlStr : `${API_BASE}${urlStr}`;
+  // NIP-98 requires the 'u' tag to be the absolute request URL — resolve
+  // against the current origin so relative API bases ('/api') sign correctly.
+  const url = new URL(
+    urlStr.startsWith('http') ? urlStr : `${API_BASE}${urlStr}`,
+    window.location.origin,
+  ).href;
 
   // 1. Create event kind 27235
   // We need to access window.nostr for signing
