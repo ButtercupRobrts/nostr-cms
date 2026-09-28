@@ -32,13 +32,13 @@ import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { useBlossomRelays } from '@/hooks/useBlossomRelays';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cn, formatPubkey } from '@/lib/utils';
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
 import { useToast } from '@/hooks/useToast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { type BlossomBlob, urlWithExtension, getMediaPreviewKind } from '@/lib/blossom';
 import { useMasonry } from '@/hooks/useMasonry';
-import { streamUpload } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType, type MediaUploadError } from '@/lib/mediaProcessing';
+import { useFileDropzone } from '@/hooks/useFileDropzone';
 
 const PAGE_SIZE = 60;
 const MAX_EAGER_PREVIEWS = PAGE_SIZE;
@@ -195,8 +195,7 @@ export function MediaSelectorDialog({
     setUploadRelays(blossomRelays);
   }, [blossomRelays]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const handleFiles = async (files: File[]) => {
     if (!files || files.length === 0 || !user) return;
 
     if (uploadRelays.length === 0) {
@@ -207,46 +206,64 @@ export function MediaSelectorDialog({
     setIsUploading(true);
     setUploadProgress(0);
 
-    const totalFiles = files.length;
-    let completedSteps = 0;
-
     try {
-      for (const file of Array.from(files)) {
-        const isVideo = file.type.startsWith('video/');
+      const { results, warnings } = await uploadMediaFiles(files, uploadRelays, user.signer, {
+        onProgress: (completed, total) => setUploadProgress((completed / total) * 100),
+      });
 
-        // Use streamUpload for videos (avoids arrayBuffer() memory spike
-        // that crashes iOS Safari on large files). Use BlossomUploader for
-        // images since it supports multi-server upload via Promise.any.
-        if (isVideo) {
-          await streamUpload(file, uploadRelays, user.signer);
-        } else {
-          const uploader = new BlossomUploader({
-            servers: uploadRelays,
-            signer: user.signer,
-          });
-          await uploader.upload(file);
-        }
-        completedSteps++;
-        setUploadProgress((completedSteps / totalFiles) * 100);
-      }
-
-      toast({ title: "Success", description: `Uploaded ${totalFiles} file(s)` });
+      // TOAST_LIMIT is 1 — merge warnings into the success toast or they get displaced
+      toast({
+        title: "Success",
+        description: `Uploaded ${results.length} file(s)` +
+          (warnings.length ? ` — ${warnings.join(' ')}` : ''),
+        variant: warnings.length ? 'destructive' : 'default',
+      });
       queryClient.invalidateQueries({ queryKey: ['blossom-blobs'] });
       setActiveTab('browse');
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error(err);
-      // BlossomUploader uses Promise.any which throws AggregateError —
-      // extract the real error message from the inner errors array.
-      const msg = err instanceof AggregateError
-        ? err.errors.map((e: unknown) => (e as Error)?.message || String(e)).join('; ')
-        : (err as Error).message || 'Upload failed';
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      // uploadMediaFiles carries warnings from files that already uploaded —
+      // merge into the error toast so they aren't lost to the failure
+      const errWarnings = (err as MediaUploadError).warnings;
+      toast({
+        title: "Error",
+        description: ((err as Error).message || 'Upload failed') +
+          (errWarnings?.length ? ` — ${errWarnings.join(' ')}` : ''),
+        variant: "destructive",
+      });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
     }
   };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFiles(Array.from(files));
+    }
+  };
+
+  // The accept attribute doesn't apply to drops — filter to image/video here
+  const { isDragging, dropzoneProps } = useFileDropzone({
+    disabled: isUploading,
+    onFiles: (files) => {
+      const media = Array.from(files).filter(
+        // file.type can be empty (e.g. .mkv on Linux) — sniff by extension
+        (f) => mediaMimeType(f).startsWith('image/') || mediaMimeType(f).startsWith('video/')
+      );
+      if (media.length > 0) {
+        handleFiles(media);
+      } else {
+        toast({
+          title: 'Unsupported files',
+          description: 'Only images and videos can be uploaded.',
+          variant: 'destructive',
+        });
+      }
+    },
+  });
 
   // Show loading state when query is pending or loading (covers initial fetch
   // and refetches). isPending is true on first load before data is available.
@@ -503,9 +520,12 @@ export function MediaSelectorDialog({
               <div
                 className={cn(
                   "flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-12 text-center transition-colors mb-6",
-                  isUploading ? "opacity-50 pointer-events-none" : "hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                  isUploading ? "opacity-50 pointer-events-none" :
+                  isDragging ? "border-primary bg-primary/10" :
+                  "hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
                 )}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isDragging && fileInputRef.current?.click()}
+                {...dropzoneProps}
               >
                 <input
                   type="file"
@@ -520,7 +540,8 @@ export function MediaSelectorDialog({
                     {isUploading ? <Loader2 className="h-8 w-8 animate-spin" /> : <Upload className="h-8 w-8" />}
                   </div>
                   <div className="text-lg font-medium">
-                    {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` : "Upload New Media"}
+                    {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` :
+                     isDragging ? "Drop files here" : "Browse or drag & drop"}
                   </div>
                   <p className="text-sm text-muted-foreground max-w-xs">
                     Files will be added to your Blossom servers and available for selection.
