@@ -35,8 +35,7 @@ import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useSched
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
-import { stripImageMetadata } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType } from '@/lib/mediaProcessing';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -285,8 +284,7 @@ export default function AdminBlog() {
   const handleFileUpload = async (files: File[]) => {
     if (!files || files.length === 0 || !user) return;
 
-    const defaultBlossomRelay = blossomRelays[0];
-    if (!defaultBlossomRelay) {
+    if (blossomRelays.length === 0) {
       toast({
         title: 'No Blossom Server',
         description: 'Please configure a Blossom server in Media settings first.',
@@ -298,32 +296,9 @@ export default function AdminBlog() {
     setIsUploading(true);
 
     try {
-      const urls: string[] = [];
+      const { results, warnings } = await uploadMediaFiles(files, blossomRelays, user.signer);
 
-      for (const file of files) {
-        // Strip metadata from images before upload
-        const { file: strippedFile, stripped, reason } = await stripImageMetadata(file);
-        if (!stripped && reason === 'gif') {
-          toast({
-            title: 'Metadata not stripped',
-            description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
-            variant: 'destructive',
-          });
-        }
-
-        const uploader = new BlossomUploader({
-          servers: [defaultBlossomRelay],
-          signer: user.signer,
-        });
-
-        const result = await uploader.upload(strippedFile);
-        if (result && result.length > 0) {
-          const urlTag = result.find((tag: string[]) => tag[0] === 'url');
-          if (urlTag && urlTag[1]) {
-            urls.push(urlTag[1]);
-          }
-        }
-      }
+      const urls = results.map(r => r.url).filter(Boolean);
 
       if (urls.length > 0) {
         const urlText = urls.join('\n');
@@ -337,9 +312,12 @@ export default function AdminBlog() {
           setFormData(prev => ({ ...prev, content: prev.content + '\n' + urlText }));
         }
 
+        // TOAST_LIMIT is 1 — merge warnings into the success toast or they get displaced
         toast({
           title: 'Upload Successful',
-          description: `Uploaded ${urls.length} file(s) to ${defaultBlossomRelay}`,
+          description: `Uploaded ${urls.length} file(s) to ${blossomRelays.length} server(s)` +
+            (warnings.length ? ` — ${warnings.join(' ')}` : ''),
+          variant: warnings.length ? 'destructive' : 'default',
         });
       }
     } catch (err) {
@@ -376,13 +354,28 @@ export default function AdminBlog() {
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    // Required for drop to fire for file drags. Limited to 'Files' so native
+    // text-drop behavior into the textarea is untouched.
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+  };
+
   const handleDrop = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    // Claim all file drops (even non-media) so the browser can't navigate away.
+    e.preventDefault();
+    // file.type can be empty (e.g. .mkv on Linux) — sniff by extension
     const files = Array.from(e.dataTransfer.files)
-      .filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
+      .filter(file => mediaMimeType(file).startsWith('image/') || mediaMimeType(file).startsWith('video/'));
 
     if (files.length > 0) {
-      e.preventDefault();
       handleFileUpload(files);
+    } else {
+      toast({
+        title: 'Unsupported files',
+        description: 'Only images and videos can be uploaded.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -907,6 +900,7 @@ export default function AdminBlog() {
                         onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
                         onPaste={handlePaste}
                         onDrop={handleDrop}
+                        onDragOver={handleDragOver}
                         placeholder="Write your post in Markdown..."
                         className="min-h-[300px] font-mono"
                         required
