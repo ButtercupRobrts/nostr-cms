@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
+import { uploadMediaFile } from "@/lib/mediaProcessing";
 import { useAppContext } from "./useAppContext";
 import { useCurrentUser } from "./useCurrentUser";
 
@@ -33,12 +33,11 @@ export function useUploadFile() {
         }
       }
 
-      const uploader = new BlossomUploader({
-        servers: relays.length > 0 ? relays : ['https://blossom.primal.net/'],
-        signer: user.signer,
-      });
-
-      const tags = await uploader.upload(file);
+      const { tags } = await uploadMediaFile(
+        file,
+        relays.length > 0 ? relays : ['https://blossom.primal.net/'],
+        user.signer,
+      );
       return tags;
     },
   });
