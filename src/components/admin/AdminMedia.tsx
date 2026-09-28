@@ -867,13 +867,20 @@ function UploadMediaSection() {
     const totalFiles = files.length;
     let completedSteps = 0;
     const uploadedVideos: { sha256: string; url: string; size: number; name: string }[] = [];
+    const gifWarnings: string[] = [];
 
     try {
       for (const file of Array.from(files)) {
-        // file.type can be empty (e.g. .mkv on Linux) — sniff by extension
-        const isImage = mediaMimeType(file).startsWith('image/');
-        const isVideo = mediaMimeType(file).startsWith('video/');
-        let fileToUpload: File = file;
+        // file.type can be empty (e.g. .mkv/.mov/.gif on Linux) — sniff by
+        // extension and normalize the File up front so the processors see the
+        // real type (a typeless .gif must hit the GIF pass-through, not the
+        // canvas, or its animation is flattened to a still frame).
+        const sniffed = mediaMimeType(file);
+        const isImage = sniffed.startsWith('image/');
+        const isVideo = sniffed.startsWith('video/');
+        let fileToUpload: File = file.type
+          ? file
+          : new File([file], file.name, { type: sniffed || 'application/octet-stream' });
         let processedInfo = '';
 
         // ─── Image processing ───
@@ -882,14 +889,11 @@ function UploadMediaSection() {
 
           if (compressImages) {
             // Compress + strip metadata (WebP re-encode)
-            const result = await processImage(file, imageQuality, maxImageDim);
+            const result = await processImage(fileToUpload, imageQuality, maxImageDim);
             fileToUpload = result.file;
             if (result.format === 'gif') {
-              toast({
-                title: 'Metadata not stripped',
-                description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
-                variant: 'destructive',
-              });
+              // TOAST_LIMIT is 1 — accumulate; merged into the final toast below
+              gifWarnings.push(`${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`);
               processedInfo = ' (GIF: uploaded as-is)';
             } else {
               const savings = ((1 - result.processedSize / result.originalSize) * 100).toFixed(0);
@@ -897,17 +901,13 @@ function UploadMediaSection() {
             }
           } else {
             // Strip metadata only (always on for images)
-            const stripped = await stripImageMetadata(file);
+            const stripped = await stripImageMetadata(fileToUpload);
             fileToUpload = stripped.file;
             if (!stripped.stripped) {
               // GIFs can't be stripped — warn user but continue
               processedInfo = stripped.reason === 'gif' ? ' (GIF: metadata not stripped)' : ' (metadata strip failed)';
               if (stripped.reason === 'gif') {
-                toast({
-                  title: 'Metadata not stripped',
-                  description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
-                  variant: 'destructive',
-                });
+                gifWarnings.push(`${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`);
               }
             } else if (fileToUpload.size < file.size) {
               processedInfo = ` (metadata stripped: ${formatBytes(file.size)} → ${formatBytes(fileToUpload.size)})`;
@@ -927,7 +927,7 @@ function UploadMediaSection() {
 
           const result = await streamProcessVideo(
             selectedRelays[0],
-            file,
+            fileToUpload,
             videoQuality,
             videoResolution,
             user.signer,
@@ -985,7 +985,9 @@ function UploadMediaSection() {
       const imageNote = compressImages ? ' (compressed + metadata stripped)' : ' (metadata stripped)';
       toast({
         title: "Success",
-        description: `Uploaded ${totalFiles} file(s)${totalFiles > 0 && files[0].type.startsWith('image/') ? imageNote : ''}`,
+        description: `Uploaded ${totalFiles} file(s)${totalFiles > 0 && mediaMimeType(files[0]).startsWith('image/') ? imageNote : ''}` +
+          (gifWarnings.length ? ` — ${gifWarnings.join(' ')}` : ''),
+        variant: gifWarnings.length ? 'destructive' : 'default',
       });
       queryClient.invalidateQueries({ queryKey: ['blossom-blobs'] });
       if (fileInputRef.current) fileInputRef.current.value = '';
