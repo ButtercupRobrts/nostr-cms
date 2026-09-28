@@ -37,7 +37,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { type BlossomBlob, urlWithExtension, getMediaPreviewKind } from '@/lib/blossom';
 import { useMasonry } from '@/hooks/useMasonry';
-import { uploadMediaFiles, mediaMimeType } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType, type MediaUploadError } from '@/lib/mediaProcessing';
 import { useFileDropzone } from '@/hooks/useFileDropzone';
 
 const PAGE_SIZE = 60;
@@ -223,7 +223,15 @@ export function MediaSelectorDialog({
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error(err);
-      toast({ title: "Error", description: (err as Error).message || 'Upload failed', variant: "destructive" });
+      // uploadMediaFiles carries warnings from files that already uploaded —
+      // merge into the error toast so they aren't lost to the failure
+      const errWarnings = (err as MediaUploadError).warnings;
+      toast({
+        title: "Error",
+        description: ((err as Error).message || 'Upload failed') +
+          (errWarnings?.length ? ` — ${errWarnings.join(' ')}` : ''),
+        variant: "destructive",
+      });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

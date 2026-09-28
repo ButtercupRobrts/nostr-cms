@@ -993,7 +993,14 @@ function UploadMediaSection() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error(err);
-      toast({ title: "Upload Error", description: (err as Error).message || 'Upload failed', variant: "destructive" });
+      // Merge warnings from files that already uploaded (TOAST_LIMIT is 1 —
+      // the error toast replaces whatever is showing, so carry them here)
+      toast({
+        title: "Upload Error",
+        description: ((err as Error).message || 'Upload failed') +
+          (gifWarnings.length ? ` — ${gifWarnings.join(' ')}` : ''),
+        variant: "destructive",
+      });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

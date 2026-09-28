@@ -573,8 +573,13 @@ export async function uploadMediaFile(
 /**
  * Upload multiple media files sequentially (preserves ordering semantics
  * and keeps only one file in flight — same as the per-callsite loops this
- * replaces). Stops on first error, matching existing behavior.
+ * replaces). Stops on first error, matching existing behavior; warnings
+ * from already-uploaded files are attached to the thrown error.
  */
+export interface MediaUploadError extends Error {
+  warnings?: string[];
+}
+
 export async function uploadMediaFiles(
   files: File[],
   servers: string[],
@@ -589,9 +594,16 @@ export async function uploadMediaFiles(
   let completed = 0;
 
   for (const file of files) {
-    const result = await uploadMediaFile(file, servers, signer, opts);
-    results.push(result);
-    warnings.push(...result.warnings);
+    try {
+      const result = await uploadMediaFile(file, servers, signer, opts);
+      results.push(result);
+      warnings.push(...result.warnings);
+    } catch (err) {
+      if (warnings.length > 0 && err instanceof Error) {
+        (err as MediaUploadError).warnings = warnings;
+      }
+      throw err;
+    }
     completed++;
     opts?.onProgress?.(completed, files.length);
   }

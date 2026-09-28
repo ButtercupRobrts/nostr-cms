@@ -35,7 +35,7 @@ import { useCreateScheduledPost, useUpdateScheduledPost } from '@/hooks/useSched
 import { useSchedulerHealth } from '@/hooks/useSchedulerHealth';
 import type { ScheduleConfig } from '@/components/admin/SchedulePicker';
 import type { NostrEvent } from '@/types/scheduled';
-import { uploadMediaFiles, mediaMimeType } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType, type MediaUploadError } from '@/lib/mediaProcessing';
 import { useAppContext } from '@/hooks/useAppContext';
 import { useRemoteNostrJson } from '@/hooks/useRemoteNostrJson';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -322,9 +322,13 @@ export default function AdminBlog() {
       }
     } catch (err) {
       console.error('Upload failed:', err);
+      // uploadMediaFiles carries warnings from files that already uploaded —
+      // merge into the error toast so they aren't lost to the failure
+      const errWarnings = (err as MediaUploadError).warnings;
       toast({
         title: 'Upload Failed',
-        description: (err as Error).message,
+        description: (err as Error).message +
+          (errWarnings?.length ? ` — ${errWarnings.join(' ')}` : ''),
         variant: 'destructive',
       });
     } finally {

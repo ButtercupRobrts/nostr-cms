@@ -28,7 +28,7 @@ import { useAppContext } from '@/hooks/useAppContext';
 import { useToast } from '@/hooks/useToast';
 import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { uploadMediaFiles, mediaMimeType } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType, type MediaUploadError } from '@/lib/mediaProcessing';
 import { queryWithNip65Fanout, getNip65ReadRelays } from '@/lib/queryRelays';
 import {
   Plus,
@@ -633,9 +633,13 @@ export default function AdminNotes() {
       }
     } catch (err) {
       console.error('Upload failed:', err);
+      // uploadMediaFiles carries warnings from files that already uploaded —
+      // merge into the error toast so they aren't lost to the failure
+      const errWarnings = (err as MediaUploadError).warnings;
       toast({
         title: 'Upload Failed',
-        description: (err as Error).message,
+        description: (err as Error).message +
+          (errWarnings?.length ? ` — ${errWarnings.join(' ')}` : ''),
         variant: 'destructive',
       });
     } finally {
