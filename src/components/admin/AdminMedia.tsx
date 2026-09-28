@@ -45,7 +45,6 @@ import { useNostr } from '@nostrify/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
@@ -57,7 +56,8 @@ import {
   processImage,
   processVideo,
   streamProcessVideo,
-  streamUpload,
+  uploadMediaFile,
+  mediaMimeType,
   estimateVideoSize,
   formatBytes,
   type VideoQuality,
@@ -66,6 +66,7 @@ import {
 } from '@/lib/mediaProcessing';
 import { type BlossomBlob, urlWithExtension, getMediaPreviewKind } from '@/lib/blossom';
 import { useMasonry } from '@/hooks/useMasonry';
+import { useFileDropzone } from '@/hooks/useFileDropzone';
 
 // --- Types ---
 
@@ -846,61 +847,10 @@ function UploadMediaSection() {
   const [pendingVideo, setPendingVideo] = useState<PendingVideo | null>(null);
   const [videoResult, setVideoResult] = useState<VideoProcessResult | null>(null);
   const [isProcessingVideo, setIsProcessingVideo] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragCounter = useRef(0);
 
   useEffect(() => {
     setSelectedRelays(blossomRelays);
   }, [blossomRelays]);
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current++;
-    if (e.dataTransfer.types.includes('Files')) setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
-      dragCounter.current = 0;
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Required to allow drop
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounter.current = 0;
-    setIsDragging(false);
-    if (isUploading) return;
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFiles(files);
-    }
-  };
-
-  // Reset drag state if the user drags out of the window without dropping
-  useEffect(() => {
-    const reset = () => {
-      dragCounter.current = 0;
-      setIsDragging(false);
-    };
-    window.addEventListener('dragend', reset);
-    window.addEventListener('drop', reset);
-    return () => {
-      window.removeEventListener('dragend', reset);
-      window.removeEventListener('drop', reset);
-    };
-  }, []);
 
   const handleFiles = async (files: FileList) => {
     if (!user || files.length === 0) return;
@@ -920,8 +870,9 @@ function UploadMediaSection() {
 
     try {
       for (const file of Array.from(files)) {
-        const isImage = file.type.startsWith('image/');
-        const isVideo = file.type.startsWith('video/');
+        // file.type can be empty (e.g. .mkv on Linux) — sniff by extension
+        const isImage = mediaMimeType(file).startsWith('image/');
+        const isVideo = mediaMimeType(file).startsWith('video/');
         let fileToUpload: File = file;
         let processedInfo = '';
 
@@ -933,8 +884,17 @@ function UploadMediaSection() {
             // Compress + strip metadata (WebP re-encode)
             const result = await processImage(file, imageQuality, maxImageDim);
             fileToUpload = result.file;
-            const savings = ((1 - result.processedSize / result.originalSize) * 100).toFixed(0);
-            processedInfo = ` → WebP ${formatBytes(result.processedSize)} (-${savings}%)`;
+            if (result.format === 'gif') {
+              toast({
+                title: 'Metadata not stripped',
+                description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+                variant: 'destructive',
+              });
+              processedInfo = ' (GIF: uploaded as-is)';
+            } else {
+              const savings = ((1 - result.processedSize / result.originalSize) * 100).toFixed(0);
+              processedInfo = ` → WebP ${formatBytes(result.processedSize)} (-${savings}%)`;
+            }
           } else {
             // Strip metadata only (always on for images)
             const stripped = await stripImageMetadata(file);
@@ -942,6 +902,13 @@ function UploadMediaSection() {
             if (!stripped.stripped) {
               // GIFs can't be stripped — warn user but continue
               processedInfo = stripped.reason === 'gif' ? ' (GIF: metadata not stripped)' : ' (metadata strip failed)';
+              if (stripped.reason === 'gif') {
+                toast({
+                  title: 'Metadata not stripped',
+                  description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
+                  variant: 'destructive',
+                });
+              }
             } else if (fileToUpload.size < file.size) {
               processedInfo = ` (metadata stripped: ${formatBytes(file.size)} → ${formatBytes(fileToUpload.size)})`;
             } else {
@@ -985,26 +952,13 @@ function UploadMediaSection() {
         // ─── Upload (images + raw videos) ───
         setUploadStatus(`Uploading ${file.name}${processedInfo}...`);
 
-        // Use streamUpload for videos (avoids arrayBuffer() memory spike
-        // that crashes iOS Safari on large files). Use BlossomUploader for
-        // images since it supports multi-server upload via Promise.any.
-        let tags: string[][];
-        if (isVideo) {
-          tags = await streamUpload(fileToUpload, selectedRelays, user.signer);
-        } else {
-          const uploader = new BlossomUploader({
-            servers: selectedRelays,
-            signer: user.signer,
-            expiresIn: 15 * 60_000,
-          });
-          tags = await uploader.upload(fileToUpload);
-        }
-
-        // Extract sha256 from the upload response tags
-        const shaTag = tags.find(t => t[0] === 'x');
-        const urlTag = tags.find(t => t[0] === 'url');
-        const sha256 = shaTag?.[1] || '';
-        const url = urlTag?.[1] || '';
+        // Shared transport: streamUpload for videos (avoids the arrayBuffer()
+        // memory spike that crashes iOS Safari), BlossomUploader fan-out for
+        // images. stripMetadata:false — fileToUpload was already
+        // processed/stripped above.
+        const { sha256, url } = await uploadMediaFile(
+          fileToUpload, selectedRelays, user.signer, { stripMetadata: false },
+        );
 
         // Track videos for processing
         if (isVideo && sha256) {
@@ -1037,12 +991,7 @@ function UploadMediaSection() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error(err);
-      // BlossomUploader uses Promise.any which throws AggregateError —
-      // extract the real error message from the inner errors array.
-      const msg = err instanceof AggregateError
-        ? err.errors.map((e: unknown) => (e as Error)?.message || String(e)).join('; ')
-        : (err as Error).message || 'Upload failed';
-      toast({ title: "Upload Error", description: msg, variant: "destructive" });
+      toast({ title: "Upload Error", description: (err as Error).message || 'Upload failed', variant: "destructive" });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -1055,6 +1004,11 @@ function UploadMediaSection() {
     if (!files || files.length === 0) return;
     handleFiles(files);
   };
+
+  const { isDragging, dropzoneProps } = useFileDropzone({
+    disabled: isUploading,
+    onFiles: handleFiles,
+  });
 
   // ─── Video processing handlers ───
 
@@ -1265,10 +1219,7 @@ function UploadMediaSection() {
             "hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
           )}
           onClick={() => !isDragging && fileInputRef.current?.click()}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          {...dropzoneProps}
         >
           <input
             type="file"
