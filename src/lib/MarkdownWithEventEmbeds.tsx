@@ -9,7 +9,9 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
 import { remarkNostrEmbed } from './remarkNostrEmbed';
+import { sanitizeSchema } from './sanitizeSchema';
 import { NostrEventEmbed } from '@/components/NostrEventEmbed';
 import { useAppContext } from '@/hooks/useAppContext';
 import { type Components } from 'react-markdown';
@@ -35,7 +37,7 @@ export function MarkdownWithEventEmbeds({ content, className }: MarkdownWithEven
     <div className={className}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkNostrEmbed]}
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={[[rehypeRaw, { allowDangerousHtml: true }], [rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
         {content}

@@ -1,3 +1,5 @@
+import type { NostrSigner } from '@nostrify/nostrify';
+
 /**
  * Shared Blossom media utilities used by AdminMedia and MediaSelectorDialog.
  */
@@ -70,4 +72,59 @@ export function getMediaPreviewKind(blob: BlossomBlob): 'image' | 'video' | null
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   return null;
+}
+
+/**
+ * Fetch the BUD-02 /list/<pubkey> blob index for a server.
+ *
+ * Tries anonymously first — same-origin relays serve public lists and remote
+ * servers often do too, which avoids a signer prompt. Only on a 401/403 does
+ * it retry once with a signed kind-24242 list authorization (Nostr header,
+ * same scheme AdminMedia uses for media browsing).
+ *
+ * Returns null when the list is unavailable (network error, non-OK status,
+ * rejected signature, or malformed body) — callers distinguish that from an
+ * empty list, which is a valid [] response.
+ */
+export async function fetchBlossomList(
+  server: string,
+  pubkey: string,
+  signer?: NostrSigner,
+): Promise<BlossomBlob[] | null> {
+  const url = `${server.replace(/\/+$/, '')}/list/${pubkey}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  } catch {
+    return null;
+  }
+
+  if ((res.status === 401 || res.status === 403) && signer) {
+    try {
+      const authEvent = await signer.signEvent({
+        kind: 24242,
+        content: 'List my blobs',
+        tags: [
+          ['t', 'list'],
+          ['expiration', String(Math.floor(Date.now() / 1000) + 300)],
+        ],
+        created_at: Math.floor(Date.now() / 1000),
+      });
+      res = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
+        headers: { Authorization: `Nostr ${btoa(JSON.stringify(authEvent))}` },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  if (!res.ok) return null;
+  try {
+    const list = await res.json();
+    return Array.isArray(list) ? (list as BlossomBlob[]) : null;
+  } catch {
+    return null;
+  }
 }
