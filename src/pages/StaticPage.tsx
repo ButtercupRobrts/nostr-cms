@@ -12,8 +12,8 @@ import { nip19 } from 'nostr-tools';
 import { RefreshCw } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { PageContent } from '@/components/admin/settings/PageContent';
-import { sha256 as sha256sum } from '@noble/hashes/sha256';
-import { bytesToHex } from '@noble/hashes/utils';
+import { sha256 as sha256sum } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 export default function StaticPage({ pathOverride }: { pathOverride?: string }) {
   const { config: appContext } = useAppContext();

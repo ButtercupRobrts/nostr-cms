@@ -10,7 +10,7 @@
  * This module provides the size estimation heuristic and the API call.
  */
 
-import { sha256 } from '@noble/hashes/sha256';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { BlossomUploader } from '@nostrify/nostrify/uploaders';
 import type { NostrSigner } from '@nostrify/nostrify';
 
