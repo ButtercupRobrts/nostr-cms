@@ -74,7 +74,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
     async function fetchFromBlossom() {
       if (!pageEvent) return;
 
-      const sha256 = pageEvent.tags.find(([name]) => name === 'sha256')?.[1];
+      const sha256 = pageEvent.tags.find(([name]) => name === 'sha256')?.[1]?.toLowerCase();
       if (!sha256) {
         // Fallback to event content if no sha256 (though our admin adds it)
         setContent(pageEvent.content);
