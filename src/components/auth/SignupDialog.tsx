@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from '@/hooks/useToast';
 import { useLoginActions } from '@/hooks/useLoginActions';
+import { isNsecLoginEnabled } from '@/lib/relay';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useUploadFile } from '@/hooks/useUploadFile';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
@@ -174,8 +175,19 @@ const SignupDialog: React.FC<SignupDialogProps> = ({ isOpen, onClose }) => {
         </DialogHeader>
 
         <div className='px-6 pb-6 space-y-4 overflow-y-auto flex-1'>
+          {/* Raw-key signup is gated off when nsec login is disabled — direct
+              users to key custody that keeps secrets out of the page. */}
+          {!isNsecLoginEnabled() ? (
+            <div className='text-center space-y-4 py-4'>
+              <p className="text-sm text-muted-foreground">
+                Signup is not available on this site. Create a key in a NIP-07
+                extension (Alby, nos2x) or a remote signer, then log in.
+              </p>
+              <Button variant="outline" onClick={onClose} className="w-full">Close</Button>
+            </div>
+          ) : null}
           {/* Generate Step */}
-          {step === 'generate' && (
+          {isNsecLoginEnabled() && step === 'generate' && (
             <div className='text-center space-y-6'>
               <div className="flex size-40 text-8xl bg-primary/10 rounded-full items-center justify-center justify-self-center">
                 🔑
