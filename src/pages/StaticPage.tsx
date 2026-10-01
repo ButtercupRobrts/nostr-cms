@@ -97,7 +97,7 @@ export default function StaticPage({ pathOverride }: { pathOverride?: string }) 
               // Verify the blob matches the sha256 tag — a hostile or
               // misconfigured Blossom server could otherwise serve arbitrary
               // content under a trusted page's hash.
-              if (bytesToHex(sha256sum(new Uint8Array(bytes))) !== sha256) {
+              if (bytesToHex(sha256sum(new Uint8Array(bytes))) !== sha256.toLowerCase()) {
                 console.warn(`Blossom hash mismatch from ${server}, skipping`);
                 continue;
               }
