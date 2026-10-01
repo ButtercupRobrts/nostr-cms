@@ -33,9 +33,16 @@ export function useUploadFile() {
         }
       }
 
+      // Hard error when no Blossom server is configured — the previous
+      // blossom.primal.net fallback would silently ship a user's media to a
+      // third-party public server on any browser with an empty relay list.
+      if (relays.length === 0) {
+        throw new Error('No Blossom server configured');
+      }
+
       const { tags } = await uploadMediaFile(
         file,
-        relays.length > 0 ? relays : ['https://blossom.primal.net/'],
+        relays,
         user.signer,
       );
       return tags;
