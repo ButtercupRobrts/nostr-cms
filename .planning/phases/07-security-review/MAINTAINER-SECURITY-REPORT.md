@@ -70,7 +70,7 @@ Note: `/login` does reject pubkeys not in the admin set (401 on random pubkey �
 
 `@nostrify/react` `NLogin.fromNsec` → `useNostrLoginReducer` serializes login state — including the secret — to `localStorage['nostr:login']`. Reachable via the LoginDialog key tab (default tab), `.txt` import, and the signup key-generation flow (which produces an `nsec.txt` download designed to be re-imported). Any XSS or compromised dependency = full key theft.
 
-Ecosystem comparison: the `HiveTalk/dashboard` codebase uses the same nostrify path (same exposure), and its guest/LiveKit flows intentionally store only disposable ephemeral keys — that "only disposable keys in localStorage" model is the right rule. NIP-49 `ncryptsec` (scrypt + XChaCha20-Poly1305) is the standard mitigation for at-rest key storage.
+**Also affects HiveTalk/dashboard** (verified in its repo): same `@nostrify/react` persistence path — nsec logins land in `localStorage['nostr:login']` identically, and `NostrCreateAccountDialog.tsx` exports a raw `nostr-backup.txt` nsec. Its guest/LiveKit flows intentionally store only disposable ephemeral keys — that "only disposable keys in localStorage" model is the right rule. NIP-49 `ncryptsec` (scrypt + XChaCha20-Poly1305) is the standard mitigation for at-rest key storage.
 
 **Our local mitigation (upstreamable):** env-gated the raw-nsec UI surface behind `VITE_ENABLE_NSEC_LOGIN` (default off in prod builds) — hides the key tab, file import, and signup key-gen. Policy control only — the mechanism remains bundled. Can package as an upstream PR with docs recommending extension (NIP-07) / bunker (NIP-46) for admins; longer-term, accepting `ncryptsec` + session-scoped decryption is the defensible nsec UX.
 
@@ -79,7 +79,7 @@ Ecosystem comparison: the `HiveTalk/dashboard` codebase uses the same nostrify p
 - **No rate limiting observed** on public endpoints in our nginx config (`limit_req`/`limit_conn` absent); `client_max_body_size 1024m` on `/upload`, `/mirror`, `/process-video*`. Auth-required still means "any valid key" for 24242 paths — resource exhaustion is feasible. Suggest documenting a reference nginx rate-limit block in the deploy docs.
 - `/process-video*` requires auth (401 unauth ✓) but is CPU-heavy per call — consider job concurrency caps swarm-side.
 - **StaticPage fetched Blossom blobs by sha256 without verifying the hash** — a hostile/misconfigured blossom server could substitute content for a trusted page's hash (bounded by DOMPurify sanitization). We patched locally (hash-verify before render, skip-to-next-server on mismatch); upstreamable.
-- **Silent `blossom.primal.net` fallback** in `useUploadFile` when no relay list is configured — silently ships uploads to a third-party public server. We changed ours to a hard error; suggest warn-or-error upstream.
+- **Silent `blossom.primal.net` fallback** in `useUploadFile` when no relay list is configured — silently ships uploads to a third-party public server. We changed ours to a hard error; suggest warn-or-error upstream. **Also present in HiveTalk/dashboard** (`src/lib/nostr/hooks/useUploadFile.ts` hardcodes the primal.net server).
 - dompurify 3.4.13 → GHSA-p98j-92pf-mc4p (low; `IN_PLACE` mode only, unused by the CMS) — dependabot #97 covers it.
 
 ## Verified sound (for completeness — these were actively probed)
