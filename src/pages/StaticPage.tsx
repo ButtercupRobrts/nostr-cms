@@ -15,7 +15,6 @@ import { PageContent } from '@/components/admin/settings/PageContent';
 import { sha256 as sha256sum } from '@noble/hashes/sha256';
 import { bytesToHex } from '@noble/hashes/utils';
 
-
 export default function StaticPage({ pathOverride }: { pathOverride?: string }) {
   const { config: appContext } = useAppContext();
   const { path } = useParams<{ path: string }>();
