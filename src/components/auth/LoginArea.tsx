@@ -51,10 +51,12 @@ export function LoginArea({ className }: LoginAreaProps) {
         onLogin={handleLogin}
       />
 
+      {isNsecLoginEnabled() && (
       <SignupDialog
         isOpen={signupDialogOpen}
         onClose={() => setSignupDialogOpen(false)}
       />
+      )}
     </div>
   );
 }
