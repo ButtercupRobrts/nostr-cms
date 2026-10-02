@@ -116,3 +116,20 @@ The binary references an `IP_RATE_LIMIT` env var (present in its env-name table)
 ## Suggested disclosure handling
 
 Finding 1 is exploitable by anonymous parties wherever `:3334` (or the session endpoints) are reachable. Recommend private fix + release, then public advisory. Happy to coordinate timing; full internal threat-model detail available on request.
+
+---
+
+## Rev 2.1 — recommendation corrections (post-review)
+
+The findings and evidence above are unchanged. Three recommendations are corrected/refined after a second review pass:
+
+**Replaces fix #4** ("bind to 127.0.0.1 by default"): a localhost default would break deployments exposing the relay directly, since `:3334` serves **both** the public relay surface (WS, blobs, nostr.json) and the admin API. The right mitigation is one of:
+- **Split listeners** — admin/dashboard API on a separate localhost-bound port or socket; public relay stays public. Isolates the admin plane regardless of auth state.
+- **Opt-in `BIND_ADDR`** — keep `0.0.0.0` default; nginx-fronted deploys bind localhost explicitly.
+Either way the auth fix (findings 1) remains the real gate.
+
+**Adds to fix #1**: whatever proof-of-possession `/login` adopts must enforce `created_at` freshness + `expiration` tag — signature verification alone is replayable. An alternative worth considering: **stateless NIP-98 per request** on admin endpoints instead of sessions — no session artifact exists to forge. Tradeoff is a signer round-trip per call (fast via NIP-07, slower via NIP-46 bunker).
+
+**Refines fix #3**: the ask is a deliberate per-endpoint auth policy, not "session on everything" — e.g. `/api/admin/users` serves data already public via nostr.json, so the real defect is incidental (not designed) authz, not a missing check per se.
+
+**Context correction on Finding 2**: `ALLOWED_MIRROR_HOSTS=*` appears in our deployment's `.env`; whether it is the shipped/oneshot-template default should be verified on the maintainer side rather than assumed.
