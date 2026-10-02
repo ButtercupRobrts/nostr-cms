@@ -1,33 +1,29 @@
-# NEXT — ordered plan (as of 2026-10-01, post-hardening)
+# NEXT — ordered plan (as of 2026-10-02, post-reconverge)
 
-State: buttercup prod hardened at edge (GET-only on admin/dashboard paths, rate limits live, body cap 256m, :3334 non-loopback dropped). Maintainer report delivered.
+## Current state
 
-## A. Pending — awaits maintainer
-- Swarm session-model fix (Finding 1). On release: pull swarm, re-run probe battery (proof-free /login must 401; forged cookie must 401; users must require session; verify writes), then decide whether to lift `limit_except GET` in nginx.
-- Possible `BIND_ADDR`/`IP_RATE_LIMIT`/`ALLOWED_MIRROR_HOSTS` knobs upstream.
+- **Prod deployed**: `index-Db6-1qH-.js` at merge `748e944` — upstream deps (vaul, dompurify, radix, query, tiptap-removal) + our security batch, all verified live (byte-level blob check, WS, auth paths)
+- **Prod hardening**: nginx GET-only on admin/dashboard paths, rate zones live, body cap 256m; iptables `:3334` rule persisted via `swarm-localhost-guard.service`
+- **Upstream**: #101 #102 #103 #91 merged; #97/#98/#99 closed with rationale (noble v2 declined — Node floor); only #92 (nostrify 0.2→0.6 migration) remains open/deferred
+- **Maintainer report**: rev2 delivered; awaits swarm fix
 
-## B. Ours — ready now, no dependency
-1. Persist the iptables rule (iptables-persistent or systemd drop-in) — currently reboot-fragile.
-2. Upstream PR: non-sensitive batch — `VITE_ENABLE_NSEC_LOGIN` gate, sha256-verify on blob fetches, blossom-empty hard error (+ warn variant for upstream). No exploit detail.
-3. Restart smoke: reboot resilience check — confirm service start order, dist intact, rate-limit conf loads.
+## A. Pending — awaits swarm maintainer
+- C1 session fix: on release → pull swarm → re-run probe battery (bare-pubkey /login must 401; forged cookie must 401; users must require session) → lift nginx `limit_except` if verified → update report's unverified rows
+- `BIND_ADDR`/`IP_RATE_LIMIT`/`ALLOWED_MIRROR_HOSTS` upstream decisions
 
-## C. Follow-ups
-4. Write-surface characterization on a disposable swarm instance (forged cookie → POST user/*) — fills the report's unverified row.
-5. ncryptsec (NIP-49) login PR upstream — long-term safe nsec UX.
-6. Dashboard XSS heads-up to maintainer (profileTabLoaders unescaped innerHTML) — held out of report per scope; decide whether to share.
-7. Watch dependabot merges: #98 noble/hashes (breaks sha256 subpath), #92 nostrify 0.2→0.6 — verify before next converge.
+## B. Ours — ready anytime
+1. **#92 nostrify migration** — the only remaining upstream dep item; dedicated branch + full test pass, not a merge-button job. Defer until maintainer appetite.
+2. **Dashboard heads-up** (drafted): `kick-user.ts` token logging + `profileTabLoaders` unescaped innerHTML — send when convenient.
+3. Optional: disposable-swarm write-surface probe → fills report's last unverified row.
+4. Optional docs PR upstream: reference hardened nginx conf + "one lockfile" + "majors need compat checks" note.
 
-## D. Deferrable / backlog
-- iOS Safari large-video upload check (needs device)
-- useUploadFile callers (avatar) browser test
-- processVideosOnUpload persistence toggle
-- Media-selector transcode option
-- dist.backup retention trimming (5 kept)
-- git reflog expire — done
-- key rotation: NOT needed (master never entered page — verified)
+## C. Ongoing hygiene
+- Watch exe.dev edge: the "upload sometimes fails" incident was client-connectivity (`ERR_NETWORK_CHANGED` + 499s — swarm healthy, ffmpeg kills = client disconnects). If it recurs on a stable connection → report stream drops to exe.dev.
+- Monitor `:8765` report-share — kill when sharing done.
+- Dependabot: future majors → check engines/API compat before merge (rule established).
 
 ## Rollback anchors
-- `buttercup/deployed-20260928` (pre-converge snapshot commit, on fork)
-- `buttercup/converge-main` (fork, current)
-- `nostr-cms/dist.backup-*` (5 newest kept)
-- nginx backup `meetup-space.bak-20261001`; iptables rule delete: `iptables -D INPUT 1`
+- `buttercup/pre-reconverge-20261001` (pre-merge snapshot, on fork)
+- `buttercup/deployed-20260928` (pre-converge snapshot)
+- `nostr-cms/dist.backup-*` (newest kept)
+- nginx `meetup-space.bak-20261001`; iptables rule via `swarm-localhost-guard.service` (disable unit to revert)
