@@ -1,6 +1,6 @@
 # Security report — swarm + nostr-cms (for HiveTalk maintainers)
 
-**Date:** 2026-10-01 (rev. 2 — all claims re-verified by live probe)
+**Date:** 2026-10-02 (rev. 2.1 — findings verified; see end for corrected recommendations)
 **Reporter:** Buttercup deployment (buttercup.exe.xyz — swarm + nostr-cms on exe.dev)
 **Scope of testing:** read-only probes against our own production deployment. GETs/OPTIONS and auth probes only; no data created, modified, or deleted. No write-endpoint payloads were executed.
 **Contact channel:** [fill in — suggest private channel, not a public issue, for Finding 1]
