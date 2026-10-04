@@ -36,3 +36,6 @@ yarn.lock
 
 # MCP configuration (may contain API keys)
 .mcp.json
+
+# Non-secret production config — flag values only, no credentials
+!.env.production
