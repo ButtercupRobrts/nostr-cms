@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/useToast';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useAppContext } from '@/hooks/useAppContext';
 import { getSwarmAdminApiUrl, isUnifiedSetup, getSiteConfigDTag } from '@/lib/relay';
+import { nip98Fetch } from '@/lib/nip98';
 import { AlertTriangle, RefreshCw, ShieldAlert, Trash2, UserPlus, Crown } from 'lucide-react';
 
 interface RelayUsersResponse {
@@ -176,55 +177,20 @@ export default function AdminRelayAccess() {
     return legacy && legacy !== primary ? [primary, legacy] : [primary];
   }, [adminApiBase]);
 
-  const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
-    if (!user?.pubkey) {
-      throw new Error('Please login with the primary owner key first');
-    }
-
-    const loginResponse = await fetch(`${base}/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
-    });
-
-    if (!loginResponse.ok) {
-      throw new Error(await parseError(loginResponse));
-    }
-  }, [user?.pubkey]);
-
+  // Each request is individually NIP-98-signed by the user's signer —
+  // replaces the cookie-session flow (which POSTed a bare pubkey to /login
+  // with no proof of key possession). Writes sign like reads.
   const fetchAdminApi = useCallback(async (path: string, init?: RequestInit): Promise<Response> => {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const method = (init?.method || 'GET').toUpperCase();
-    const requiresSession = method !== 'GET';
-
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-
-      if (requiresSession) {
-        await ensureAdminSession(base);
-      }
-
-      let response = await fetch(`${base}${normalizedPath}`, {
-        credentials: 'include',
-        ...init,
-      });
-
-      if (response.status === 401 && requiresSession) {
-        await ensureAdminSession(base);
-        response = await fetch(`${base}${normalizedPath}`, {
-          credentials: 'include',
-          ...init,
-        });
-      }
-
+      const response = await nip98Fetch(`${base}${normalizedPath}`, init);
       if (response.status !== 404 || index === adminApiBases.length - 1) {
         return response;
       }
     }
-
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases, ensureAdminSession]);
+  }, [adminApiBases]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
