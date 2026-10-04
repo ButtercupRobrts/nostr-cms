@@ -1,5 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { isUnifiedSetup } from '@/lib/relay';
+import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
+
+interface RelayUsersResponse {
+  users: Record<string, string>;
+  isRemote: boolean;
+  npubDomain?: string;
+}
 
 interface NostrJsonUser {
   name: string;
@@ -23,10 +29,9 @@ async function parseError(response: Response): Promise<string> {
  * Unified hook to fetch nostr.json users.
  *
  * In unified setup (CMS and Swarm on same domain):
- * - Reads the relay's same-origin /.well-known/nostr.json — the relay's
- *   member directory; same data the admin API serves, no session needed.
- *   Note: VITE_REMOTE_NOSTR_JSON_URL is the CMS *auth* directory
- *   (useAdminAuth) — deliberately not used here; members ≠ auth admins.
+ * - Fetches /api/admin/users (public GET — proxied to the relay in every
+ *   deployment shape; the only change is no session cookie)
+ * - Provides full CRUD capability via the API
  *
  * In separate setup (CMS and Swarm on different domains):
  * - Fetches from VITE_REMOTE_NOSTR_JSON_URL or /.well-known/nostr.json
@@ -34,32 +39,33 @@ async function parseError(response: Response): Promise<string> {
  */
 export function useNostrJsonUsers() {
   const unified = isUnifiedSetup();
+  const adminApiBase = getSwarmAdminApiUrl();
 
   return useQuery({
-    queryKey: ['nostr-json-users', unified, DEFAULT_NOSTR_JSON_URL],
-    queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'nostr-json' | 'remote-json' }> => {
+    queryKey: ['nostr-json-users', unified, adminApiBase, DEFAULT_NOSTR_JSON_URL],
+    queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'swarm-api' | 'remote-json' }> => {
       if (unified) {
-        // Unified mode: read the relay's own directory — the same-origin
-        // .well-known/nostr.json IS the relay's member list. Consumers
-        // (UserPicker, community zap stats) want relay members; do NOT
-        // substitute VITE_REMOTE_NOSTR_JSON_URL — that is the CMS auth
-        // directory used by useAdminAuth, a different semantic set.
-        const response = await fetch('/.well-known/nostr.json');
+        // GET /api/admin/users is public (no session needed) and is proxied to
+        // the relay in every deployment shape — unlike /.well-known/nostr.json,
+        // which on static hosts (e.g. Vercel rewrites covering only /api) can
+        // resolve to the CMS's own bundled placeholder, not the relay's member
+        // directory. Only the credentials were removed; the endpoint stays.
+        const response = await fetch(`${adminApiBase}/users`);
 
         if (!response.ok) {
           throw new Error(await parseError(response));
         }
 
-        const data: NostrJsonResponse = await response.json();
-        const users = Object.entries(data.names || {}).map(([name, pubkey]) => ({
+        const data: RelayUsersResponse = await response.json();
+        const users = Object.entries(data.users || {}).map(([name, pubkey]) => ({
           name,
           pubkey: pubkey.toLowerCase().trim(),
         }));
 
         return {
           users,
-          isRemote: false,
-          source: 'nostr-json',
+          isRemote: data.isRemote,
+          source: 'swarm-api',
         };
       } else {
         // Separate mode: fetch from remote nostr.json URL
