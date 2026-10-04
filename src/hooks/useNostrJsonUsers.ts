@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
 
@@ -40,9 +41,16 @@ async function parseError(response: Response): Promise<string> {
 export function useNostrJsonUsers() {
   const unified = isUnifiedSetup();
   const adminApiBase = getSwarmAdminApiUrl();
+  const adminApiBases = useMemo(() => {
+    const primary = adminApiBase.replace(/\/$/, '');
+    const legacy = primary.endsWith('/admin')
+      ? `${primary.slice(0, -'/admin'.length)}/dashboard`
+      : '';
+    return legacy && legacy !== primary ? [primary, legacy] : [primary];
+  }, [adminApiBase]);
 
   return useQuery({
-    queryKey: ['nostr-json-users', unified, adminApiBase, DEFAULT_NOSTR_JSON_URL],
+    queryKey: ['nostr-json-users', unified, adminApiBases, DEFAULT_NOSTR_JSON_URL],
     queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'swarm-api' | 'remote-json' }> => {
       if (unified) {
         // GET /api/admin/users is public (no session needed) and is proxied to
@@ -50,8 +58,15 @@ export function useNostrJsonUsers() {
         // which on static hosts (e.g. Vercel rewrites covering only /api) can
         // resolve to the CMS's own bundled placeholder, not the relay's member
         // directory. Only the credentials were removed; the endpoint stays.
-        const response = await fetch(`${adminApiBase}/users`);
+        let response: Response | null = null;
+        for (const base of adminApiBases) {
+          response = await fetch(`${base}/users`);
+          if (response.status !== 404) break;
+        }
 
+        if (!response) {
+          throw new Error('Unable to reach relay users API');
+        }
         if (!response.ok) {
           throw new Error(await parseError(response));
         }
@@ -71,7 +86,7 @@ export function useNostrJsonUsers() {
         // Separate mode: fetch from remote nostr.json URL
         const response = await fetch(DEFAULT_NOSTR_JSON_URL);
 
-        if (!response.ok) {
+        if (!response || !response.ok) {
           throw new Error('Failed to fetch nostr.json');
         }
 
