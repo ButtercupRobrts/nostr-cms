@@ -23,8 +23,10 @@ async function parseError(response: Response): Promise<string> {
  * Unified hook to fetch nostr.json users.
  *
  * In unified setup (CMS and Swarm on same domain):
- * - Reads the public nostr.json (configured remote URL if set, else local
- *   .well-known) — same data the admin API serves, no session needed
+ * - Reads the relay's same-origin /.well-known/nostr.json — the relay's
+ *   member directory; same data the admin API serves, no session needed.
+ *   Note: VITE_REMOTE_NOSTR_JSON_URL is the CMS *auth* directory
+ *   (useAdminAuth) — deliberately not used here; members ≠ auth admins.
  *
  * In separate setup (CMS and Swarm on different domains):
  * - Fetches from VITE_REMOTE_NOSTR_JSON_URL or /.well-known/nostr.json
@@ -37,12 +39,12 @@ export function useNostrJsonUsers() {
     queryKey: ['nostr-json-users', unified, DEFAULT_NOSTR_JSON_URL],
     queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'nostr-json' | 'remote-json' }> => {
       if (unified) {
-        // Unified mode: fetch the public directory directly — same names data
-        // as /api/admin/users, without the session-cookie admin API. Prefer the
-        // configured VITE_REMOTE_NOSTR_JSON_URL (the same source useAdminAuth
-        // reads) so both views agree; fall back to the local .well-known doc.
-        const configured = import.meta.env.VITE_REMOTE_NOSTR_JSON_URL;
-        const response = await fetch(configured || '/.well-known/nostr.json');
+        // Unified mode: read the relay's own directory — the same-origin
+        // .well-known/nostr.json IS the relay's member list. Consumers
+        // (UserPicker, community zap stats) want relay members; do NOT
+        // substitute VITE_REMOTE_NOSTR_JSON_URL — that is the CMS auth
+        // directory used by useAdminAuth, a different semantic set.
+        const response = await fetch('/.well-known/nostr.json');
 
         if (!response.ok) {
           throw new Error(await parseError(response));
@@ -56,7 +58,7 @@ export function useNostrJsonUsers() {
 
         return {
           users,
-          isRemote: !!configured,
+          isRemote: false,
           source: 'nostr-json',
         };
       } else {
