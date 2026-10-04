@@ -23,8 +23,8 @@ async function parseError(response: Response): Promise<string> {
  * Unified hook to fetch nostr.json users.
  *
  * In unified setup (CMS and Swarm on same domain):
- * - Fetches from Swarm Admin API (/api/admin/users)
- * - Provides full CRUD capability via the API
+ * - Reads the public nostr.json (configured remote URL if set, else local
+ *   .well-known) — same data the admin API serves, no session needed
  *
  * In separate setup (CMS and Swarm on different domains):
  * - Fetches from VITE_REMOTE_NOSTR_JSON_URL or /.well-known/nostr.json
@@ -35,11 +35,14 @@ export function useNostrJsonUsers() {
 
   return useQuery({
     queryKey: ['nostr-json-users', unified, DEFAULT_NOSTR_JSON_URL],
-    queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'swarm-api' | 'remote-json' }> => {
+    queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'nostr-json' | 'remote-json' }> => {
       if (unified) {
-        // Unified mode: fetch public nostr.json directly — same names data as
-        // /api/admin/users without depending on the session-cookie admin API.
-        const response = await fetch('/.well-known/nostr.json');
+        // Unified mode: fetch the public directory directly — same names data
+        // as /api/admin/users, without the session-cookie admin API. Prefer the
+        // configured VITE_REMOTE_NOSTR_JSON_URL (the same source useAdminAuth
+        // reads) so both views agree; fall back to the local .well-known doc.
+        const configured = import.meta.env.VITE_REMOTE_NOSTR_JSON_URL;
+        const response = await fetch(configured || '/.well-known/nostr.json');
 
         if (!response.ok) {
           throw new Error(await parseError(response));
@@ -53,8 +56,8 @@ export function useNostrJsonUsers() {
 
         return {
           users,
-          isRemote: false,
-          source: 'swarm-api',
+          isRemote: !!configured,
+          source: 'nostr-json',
         };
       } else {
         // Separate mode: fetch from remote nostr.json URL
