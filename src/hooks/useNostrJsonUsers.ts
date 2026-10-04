@@ -1,11 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getSwarmAdminApiUrl, isUnifiedSetup } from '@/lib/relay';
-
-interface RelayUsersResponse {
-  users: Record<string, string>;
-  isRemote: boolean;
-  npubDomain?: string;
-}
+import { isUnifiedSetup } from '@/lib/relay';
 
 interface NostrJsonUser {
   name: string;
@@ -38,31 +32,28 @@ async function parseError(response: Response): Promise<string> {
  */
 export function useNostrJsonUsers() {
   const unified = isUnifiedSetup();
-  const adminApiBase = getSwarmAdminApiUrl();
 
   return useQuery({
-    queryKey: ['nostr-json-users', unified, adminApiBase, DEFAULT_NOSTR_JSON_URL],
+    queryKey: ['nostr-json-users', unified, DEFAULT_NOSTR_JSON_URL],
     queryFn: async (): Promise<{ users: NostrJsonUser[]; isRemote: boolean; source: 'swarm-api' | 'remote-json' }> => {
       if (unified) {
-        // Unified mode: fetch from Swarm Admin API
-        const response = await fetch(`${adminApiBase}/users`, {
-          method: 'GET',
-          credentials: 'include',
-        });
+        // Unified mode: fetch public nostr.json directly — same names data as
+        // /api/admin/users without depending on the session-cookie admin API.
+        const response = await fetch('/.well-known/nostr.json');
 
         if (!response.ok) {
           throw new Error(await parseError(response));
         }
 
-        const data: RelayUsersResponse = await response.json();
-        const users = Object.entries(data.users || {}).map(([name, pubkey]) => ({
+        const data: NostrJsonResponse = await response.json();
+        const users = Object.entries(data.names || {}).map(([name, pubkey]) => ({
           name,
           pubkey: pubkey.toLowerCase().trim(),
         }));
 
         return {
           users,
-          isRemote: data.isRemote,
+          isRemote: false,
           source: 'swarm-api',
         };
       } else {
