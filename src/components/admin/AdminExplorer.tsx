@@ -162,14 +162,15 @@ function useAdminApi() {
   // replaces the cookie-session flow (which POSTed a bare pubkey to /login
   // with no proof of key possession).
   const fetchAdminApi = useCallback(async (path: string): Promise<Response> => {
+    if (!user) throw new Error('Please login with the primary owner key first');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-      const response = await nip98Fetch(`${base}${normalizedPath}`);
+      const response = await nip98Fetch(`${base}${normalizedPath}`, {}, user);
       if (response.status !== 404 || index === adminApiBases.length - 1) return response;
     }
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases]);
+  }, [adminApiBases, user]);
 
   return { fetchAdminApi, nostr, user };
 }

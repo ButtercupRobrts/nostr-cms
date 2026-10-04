@@ -18,16 +18,15 @@ type NostrSigner = {
  * The `u` tag must be the absolute request URL — resolves relative URLs
  * against the current origin.
  */
-export async function nip98Fetch(urlStr: string, init: RequestInit = {}): Promise<Response> {
+export async function nip98Fetch(
+  urlStr: string,
+  init: RequestInit = {},
+  user: { pubkey: string; signer: NostrSigner },
+): Promise<Response> {
   const url = new URL(urlStr, window.location.origin).href;
   const method = (init.method || 'GET').toUpperCase();
 
-  const nostr = (window as Window & { nostr?: NostrSigner }).nostr;
-  if (!nostr) {
-    throw new Error('Nostr extension not found');
-  }
-
-  const pubkey = await nostr.getPublicKey();
+  const pubkey = user.pubkey;
 
   const body = typeof init.body === 'string' ? init.body : undefined;
   const tags: string[][] = [
@@ -46,7 +45,7 @@ export async function nip98Fetch(urlStr: string, init: RequestInit = {}): Promis
     pubkey,
   };
 
-  const signed = await nostr.signEvent(event);
+  const signed = await user.signer.signEvent(event);
   const token = btoa(JSON.stringify(signed));
 
   const headers = new Headers(init.headers);

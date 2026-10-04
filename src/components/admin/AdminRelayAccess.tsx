@@ -181,16 +181,17 @@ export default function AdminRelayAccess() {
   // replaces the cookie-session flow (which POSTed a bare pubkey to /login
   // with no proof of key possession). Writes sign like reads.
   const fetchAdminApi = useCallback(async (path: string, init?: RequestInit): Promise<Response> => {
+    if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-      const response = await nip98Fetch(`${base}${normalizedPath}`, init);
+      const response = await nip98Fetch(`${base}${normalizedPath}`, init, user);
       if (response.status !== 404 || index === adminApiBases.length - 1) {
         return response;
       }
     }
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases]);
+  }, [adminApiBases, user]);
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
