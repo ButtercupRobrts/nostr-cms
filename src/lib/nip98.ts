@@ -54,5 +54,7 @@ export async function nip98Fetch(
     headers.set('Content-Type', 'application/json');
   }
 
-  return fetch(url, { ...init, method, headers });
+  // Signed auth is bound to the 'u' tag URL — never let a redirect carry it
+  // to a different URL (verifier would reject the stale 'u' anyway).
+  return fetch(url, { ...init, method, headers, redirect: 'manual' });
 }
