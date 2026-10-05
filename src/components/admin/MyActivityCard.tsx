@@ -120,9 +120,11 @@ async function paginateAuthorFilter(
             [{ ...filter, since: until, until: until, limit: relayCap + 1 }],
             { signal },
           );
-          // A probe filling the observed relay cap is ambiguous even when every
-          // ID is already known — the second may hold more than the cap carries.
-          if (probe.length >= relayCap || probe.some((evt) => !events.has(evt.id))) {
+          // Flag partial only on evidence of omission: unseen IDs, or the
+          // probe exceeding the observed cap (the relay could serve more than
+          // the page carried). Equality is ambiguous — the relay may have
+          // returned everything at that second — so it is not evidence.
+          if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
             partial = true;
           }
         } catch {

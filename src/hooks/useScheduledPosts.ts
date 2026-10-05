@@ -360,7 +360,9 @@ export function useClearScheduledPostsHistory() {
       }
       return ids.length;
     },
-    onSuccess: (_, variables) => {
+    // onSettled — invalidate even on partial failure so successfully-deleted
+    // entries leave the cache instead of lingering until the next refetch.
+    onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
         queryKey: ['scheduled-posts', variables.userPubkey],
       });
