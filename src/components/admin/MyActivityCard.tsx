@@ -112,8 +112,11 @@ async function paginateAuthorFilter(
     if (newOnPage === 0) {
       if (batch.length === 0 || until === undefined) break;
       // The page repeated: the boundary second may exceed the relay's cap —
-      // filters have no intra-timestamp cursor. Probe it explicitly for
-      // evidence of omission; equality alone is ambiguous and not flagged.
+      // filters have no intra-timestamp cursor. Probe it explicitly.
+      // Evidence of omission: unseen IDs or more than the observed cap.
+      // Equality is ambiguous — it flags partial only with independent
+      // evidence of truncation: older events that the saturated inclusive
+      // cursor could never have reached.
       try {
         const probe = await nostr.query(
           [{ ...filter, since: until, until, limit: relayCap + 1 }],
@@ -121,6 +124,12 @@ async function paginateAuthorFilter(
         );
         if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
           partial = true;
+        } else if (probe.length === relayCap && relayCap > 0) {
+          const older = await nostr.query(
+            [{ ...filter, until: until - 1, limit: 1 }],
+            { signal },
+          );
+          if (older.length > 0) partial = true;
         }
       } catch {
         partial = true;
