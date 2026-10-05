@@ -79,6 +79,7 @@ async function paginateAuthorFilter(
   const events = new Map<string, NostrEvent>();
   let until: number | undefined;
   let partial = false;
+  let relayCap = 0; // largest observed page = effective relay cap estimate
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const f: NostrFilter = { ...filter };
@@ -107,6 +108,7 @@ async function paginateAuthorFilter(
       if (evt.created_at < oldest) oldest = evt.created_at;
     }
 
+    relayCap = Math.max(relayCap, batch.length);
     if (newOnPage === 0) {
       // A repeated page at a capacity-filled boundary timestamp can hide
       // events sharing that second — filters have no intra-timestamp cursor.
@@ -115,10 +117,14 @@ async function paginateAuthorFilter(
       if (batch.length > 0 && until !== undefined) {
         try {
           const probe = await nostr.query(
-            [{ ...filter, since: until, until: until, limit: (filter.limit ?? 250) + 1 }],
+            [{ ...filter, since: until, until: until, limit: relayCap + 1 }],
             { signal },
           );
-          if (probe.some((evt) => !events.has(evt.id))) partial = true;
+          // A probe filling the observed relay cap is ambiguous even when every
+          // ID is already known — the second may hold more than the cap carries.
+          if (probe.length >= relayCap || probe.some((evt) => !events.has(evt.id))) {
+            partial = true;
+          }
         } catch {
           partial = true;
         }

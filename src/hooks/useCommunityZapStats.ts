@@ -247,7 +247,11 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
               }],
               { signal },
             );
-            if (floorProbe.length > seenAtFloor) suspectedPartial = true;
+            // A probe at the observed relay cap is ambiguous even if nothing
+            // new appears — the second may exceed what the cap carries.
+            if (floorProbe.length > seenAtFloor || floorProbe.length >= pageCapacity) {
+              suspectedPartial = true;
+            }
             for (const evt of floorProbe) ingest(evt);
           } catch {
             suspectedPartial = true;
