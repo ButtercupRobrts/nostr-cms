@@ -114,8 +114,9 @@ async function paginateAuthorFilter(
       // The page repeated: the boundary second may exceed the relay's cap —
       // filters have no intra-timestamp cursor. Probe it for evidence of
       // omission: unseen IDs or a response above the observed cap. Equality
-      // is ambiguous and older events are not evidence — they get fetched on
-      // the way down.
+      // is ambiguous — flag it only when older history exists, since events
+      // hidden inside the second would then leave the total a lower bound.
+      let ambiguousAtCap = false;
       try {
         const probe = await nostr.query(
           [{ ...filter, since: until, until, limit: relayCap + 1 }],
@@ -123,16 +124,34 @@ async function paginateAuthorFilter(
         );
         if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
           partial = true;
+        } else {
+          ambiguousAtCap = probe.length === relayCap && relayCap > 0;
         }
       } catch {
         partial = true;
       }
-      // `until` is inclusive — step below the boundary second to keep reading
-      // older events rather than stopping at the repeated page.
+      // Independent evidence check: does history remain below the boundary?
+      // Drives both the ambiguous-cap flag and the budget-exhausted flag —
+      // unread history is what makes either a real omission.
+      let hasOlder = false;
+      if (!partial && (ambiguousAtCap || page === MAX_PAGES - 1)) {
+        try {
+          const older = await nostr.query(
+            [{ ...filter, until: until - 1, limit: 1 }],
+            { signal },
+          );
+          hasOlder = older.length > 0;
+        } catch {
+          partial = true;
+        }
+      }
+      if (ambiguousAtCap && hasOlder) partial = true;
       if (page === MAX_PAGES - 1) {
-        partial = true; // budget spent while history may remain unread
+        if (hasOlder) partial = true;
         break;
       }
+      // `until` is inclusive — step below the boundary second to keep reading
+      // older events rather than stopping at the repeated page.
       until = until - 1;
       continue;
     }
