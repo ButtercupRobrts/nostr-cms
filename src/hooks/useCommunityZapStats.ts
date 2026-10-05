@@ -230,10 +230,28 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
         }
         pageCapacity = Math.max(pageCapacity, batch.length);
         if (since > 0 && oldest <= since) {
-          // If this page filled to capacity and its oldest receipt lands on the
-          // range floor, the boundary second may hold unseen receipts — flag
-          // the uncertainty instead of presenting a truncated range as full.
-          if (oldest === since && batch.length >= pageCapacity) suspectedPartial = true;
+          // The range floor may hold more receipts than the page carried —
+          // probe the boundary second with a limit beyond what we have seen
+          // there; unseen receipts mean the range is truncated, not complete.
+          try {
+            const seenAtFloor = [...receipts.values()].filter(
+              (e) => e.created_at === since,
+            ).length;
+            const floorProbe = await nostr.query(
+              [{
+                kinds: [9735],
+                '#p': [...memberSet],
+                limit: seenAtFloor + 1,
+                since,
+                until: since,
+              }],
+              { signal },
+            );
+            if (floorProbe.length > seenAtFloor) suspectedPartial = true;
+            for (const evt of floorProbe) ingest(evt);
+          } catch {
+            suspectedPartial = true;
+          }
           break;
         }
         cursor = oldest;
