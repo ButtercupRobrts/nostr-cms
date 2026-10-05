@@ -14,6 +14,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useDefaultRelay } from '@/hooks/useDefaultRelay';
 import { useToast } from '@/hooks/useToast';
 import { getMasterPubkey, getSwarmAdminApiUrl } from '@/lib/relay';
+import { nip98Fetch } from '@/lib/nip98';
 import { useAdminAuth } from '@/hooks/useRemoteNostrJson';
 import { RefreshCw, Search, ChevronRight, Eye, X, Copy, ChevronDown, Repeat2 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -157,31 +158,19 @@ function useAdminApi() {
     return legacy && legacy !== primary ? [primary, legacy] : [primary];
   }, [adminApiBase]);
 
-  const ensureAdminSession = useCallback(async (base: string): Promise<void> => {
-    if (!user?.pubkey) throw new Error('Please login with the primary owner key first');
-    const loginResponse = await fetch(`${base}/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pubkey: user.pubkey.toLowerCase().trim() }),
-    });
-    if (!loginResponse.ok) throw new Error(await parseError(loginResponse));
-  }, [user?.pubkey]);
-
+  // Each request is individually NIP-98-signed by the user's signer —
+  // replaces the cookie-session flow (which POSTed a bare pubkey to /login
+  // with no proof of key possession).
   const fetchAdminApi = useCallback(async (path: string): Promise<Response> => {
+    if (!user) throw new Error('Please login with the primary owner key first');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     for (let index = 0; index < adminApiBases.length; index++) {
       const base = adminApiBases[index];
-      await ensureAdminSession(base);
-      let response = await fetch(`${base}${normalizedPath}`, { credentials: 'include' });
-      if (response.status === 401) {
-        await ensureAdminSession(base);
-        response = await fetch(`${base}${normalizedPath}`, { credentials: 'include' });
-      }
+      const response = await nip98Fetch(`${base}${normalizedPath}`, {}, user);
       if (response.status !== 404 || index === adminApiBases.length - 1) return response;
     }
     throw new Error('Unable to reach relay admin API');
-  }, [adminApiBases, ensureAdminSession]);
+  }, [adminApiBases, user]);
 
   return { fetchAdminApi, nostr, user };
 }

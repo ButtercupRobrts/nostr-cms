@@ -11,6 +11,8 @@
  */
 
 import { sha256 } from '@noble/hashes/sha256';
+import { BlossomUploader } from '@nostrify/nostrify/uploaders';
+import type { NostrSigner } from '@nostrify/nostrify';
 
 // ─── Types ───
 
@@ -388,7 +390,7 @@ export async function streamProcessVideo(
 export async function streamUpload(
   file: File,
   servers: string | string[],
-  signer: { signEvent: (event: unknown) => Promise<unknown> },
+  signer: NostrSigner,
   expiresIn: number = 15 * 60_000,
 ): Promise<string[][]> {
   const serverList = Array.isArray(servers) ? servers : [servers];
@@ -420,7 +422,7 @@ export async function streamUpload(
       ['size', file.size.toString()],
       ['expiration', Math.floor(expiration / 1000).toString()],
     ],
-  }) as Record<string, unknown>;
+  });
 
   const authBase64 = btoa(JSON.stringify(event));
 
@@ -472,4 +474,139 @@ export async function streamUpload(
   }
 
   return tags;
+}
+
+// ─── Unified media upload transport ───
+
+/** Common media extensions → MIME, for files whose `file.type` is empty
+ *  (frequent on Linux for .mkv/.mov/screen recordings without a MIME db entry). */
+const EXT_TO_MIME: Record<string, string> = {
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  mkv: 'video/x-matroska', m4v: 'video/x-m4v', avi: 'video/x-msvideo',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+  webp: 'image/webp', avif: 'image/avif', heic: 'image/heic',
+};
+
+/** Best-effort media MIME type — falls back to the filename extension. */
+export function mediaMimeType(file: File): string {
+  if (file.type) return file.type;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  return EXT_TO_MIME[ext] || '';
+}
+
+export interface MediaUploadResult {
+  sha256: string;
+  url: string;
+  tags: string[][];
+  /** The file actually uploaded (post-strip — may differ from the input). */
+  file: File;
+  /** Non-fatal issues the caller should surface (e.g. GIF not stripped). */
+  warnings: string[];
+}
+
+/**
+ * Upload a single media file to Blossom servers.
+ *
+ * - `image/*` → EXIF/GPS stripped via stripImageMetadata (unless
+ *   `stripMetadata: false` — for callers that pre-process the file), then
+ *   BlossomUploader (Promise.any fan-out to all servers).
+ * - `video/*` → streamUpload (chunked hash + streaming PUT; avoids the
+ *   arrayBuffer() memory spike in BlossomUploader that crashes iOS Safari).
+ * - Never invokes image processing on non-images — callers cannot
+ *   accidentally break video uploads by forgetting a type guard.
+ *
+ * AggregateError from BlossomUploader's Promise.any is unwrapped so the
+ * caller's error message is the real server response.
+ */
+export async function uploadMediaFile(
+  file: File,
+  servers: string[],
+  signer: NostrSigner,
+  opts?: { stripMetadata?: boolean; expiresIn?: number },
+): Promise<MediaUploadResult> {
+  if (servers.length === 0) throw new Error('No servers provided for upload');
+
+  const warnings: string[] = [];
+  // Normalize empty file.type via extension — Blob slices are cheap views, so
+  // this doesn't copy the file into heap. Ensures the correct Content-Type is
+  // stored server-side and drives the image/video branch decisions below.
+  let fileToUpload = file.type
+    ? file
+    : new File([file], file.name, { type: mediaMimeType(file) || 'application/octet-stream' });
+
+  if (opts?.stripMetadata !== false && fileToUpload.type.startsWith('image/')) {
+    const stripped = await stripImageMetadata(fileToUpload);
+    fileToUpload = stripped.file;
+    if (stripped.reason === 'gif') {
+      warnings.push(`${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`);
+    }
+  }
+
+  let tags: string[][];
+  try {
+    if (fileToUpload.type.startsWith('video/')) {
+      tags = await streamUpload(fileToUpload, servers, signer, opts?.expiresIn);
+    } else {
+      const uploader = new BlossomUploader({
+        servers,
+        signer,
+        expiresIn: opts?.expiresIn ?? 15 * 60_000,
+      });
+      tags = await uploader.upload(fileToUpload);
+    }
+  } catch (err) {
+    const msg = err instanceof AggregateError
+      ? err.errors.map((e: unknown) => (e as Error)?.message || String(e)).join('; ')
+      : (err as Error).message || 'Upload failed';
+    throw new Error(msg);
+  }
+
+  return {
+    sha256: tags.find(t => t[0] === 'x')?.[1] || '',
+    url: tags.find(t => t[0] === 'url')?.[1] || '',
+    tags,
+    file: fileToUpload,
+    warnings,
+  };
+}
+
+/**
+ * Upload multiple media files sequentially (preserves ordering semantics
+ * and keeps only one file in flight — same as the per-callsite loops this
+ * replaces). Stops on first error, matching existing behavior; warnings
+ * from already-uploaded files are attached to the thrown error.
+ */
+export interface MediaUploadError extends Error {
+  warnings?: string[];
+}
+
+export async function uploadMediaFiles(
+  files: File[],
+  servers: string[],
+  signer: NostrSigner,
+  opts?: {
+    stripMetadata?: boolean;
+    onProgress?: (completed: number, total: number) => void;
+  },
+): Promise<{ results: MediaUploadResult[]; warnings: string[] }> {
+  const results: MediaUploadResult[] = [];
+  const warnings: string[] = [];
+  let completed = 0;
+
+  for (const file of files) {
+    try {
+      const result = await uploadMediaFile(file, servers, signer, opts);
+      results.push(result);
+      warnings.push(...result.warnings);
+    } catch (err) {
+      if (warnings.length > 0 && err instanceof Error) {
+        (err as MediaUploadError).warnings = warnings;
+      }
+      throw err;
+    }
+    completed++;
+    opts?.onProgress?.(completed, files.length);
+  }
+
+  return { results, warnings };
 }

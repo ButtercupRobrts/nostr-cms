@@ -261,9 +261,9 @@ export default function AdminDashboard() {
           </Card>
         ))}
         {/* My Activity — visible to all admin users (primary & secondary).
-            Uses the relay dashboard API (/dashboard/my-stats), not a
-            standard Nostr author query, so it works for anyone with a
-            dashboard session. */}
+            Computes stats client-side: a paginated author query over the
+            relay for event counts, plus the Blossom /list endpoint for
+            media — no dashboard session required. */}
         <MyActivityCard />
       </div>
 
