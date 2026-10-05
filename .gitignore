@@ -39,3 +39,7 @@ yarn.lock
 
 # Non-secret production config — flag values only, no credentials
 !.env.production
+
+# local working docs — kept in private ops repo only
+.planning/
+
