@@ -120,12 +120,29 @@ async function paginateAuthorFilter(
             [{ ...filter, since: until, until: until, limit: relayCap + 1 }],
             { signal },
           );
-          // Flag partial only on evidence of omission: unseen IDs, or the
-          // probe exceeding the observed cap (the relay could serve more than
-          // the page carried). Equality is ambiguous — the relay may have
-          // returned everything at that second — so it is not evidence.
           if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
             partial = true;
+          } else if (probe.length === relayCap && relayCap > 0) {
+            // Equality is ambiguous: the relay may be hard-capped at relayCap
+            // (second holds more than it serves) or the second is exactly
+            // complete. Independent evidence decides: because `until` is
+            // inclusive, a saturated boundary also blocks anything older —
+            // if older events exist, truncation is proven, not suspected.
+            try {
+              const older = await nostr.query(
+                [{ ...filter, until: until - 1, limit: 1 }],
+                { signal },
+              );
+              if (older.length > 0) {
+                partial = true;
+              } else if (relayCap >= (filter.limit ?? Infinity)) {
+                // No older events; the saturated page filled the request limit —
+                // the cap may still hide events in the boundary second.
+                partial = true;
+              }
+            } catch {
+              partial = true;
+            }
           }
         } catch {
           partial = true;
