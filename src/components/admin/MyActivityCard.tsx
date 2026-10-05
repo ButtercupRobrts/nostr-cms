@@ -107,7 +107,24 @@ async function paginateAuthorFilter(
       if (evt.created_at < oldest) oldest = evt.created_at;
     }
 
-    if (newOnPage === 0) break;
+    if (newOnPage === 0) {
+      // A repeated page at a capacity-filled boundary timestamp can hide
+      // events sharing that second — filters have no intra-timestamp cursor.
+      // Probe the boundary second explicitly; unseen events mean the totals
+      // are a lower bound.
+      if (batch.length > 0 && until !== undefined) {
+        try {
+          const probe = await nostr.query(
+            [{ ...filter, since: until, until: until, limit: (filter.limit ?? 250) + 1 }],
+            { signal },
+          );
+          if (probe.some((evt) => !events.has(evt.id))) partial = true;
+        } catch {
+          partial = true;
+        }
+      }
+      break;
+    }
     until = oldest;
     if (page === MAX_PAGES - 1) partial = true;
   }
