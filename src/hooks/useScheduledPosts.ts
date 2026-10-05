@@ -353,7 +353,11 @@ export function useClearScheduledPostsHistory() {
         throw new Error('Clearing pending posts in bulk is not supported');
       }
 
-      await Promise.all(ids.map((id) => fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE', undefined, user)));
+      // Sequential — signers (esp. extensions) can fail on concurrent prompts;
+      // on error the remaining ids stay pending rather than in-flight.
+      for (const id of ids) {
+        await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE', undefined, user);
+      }
       return ids.length;
     },
     onSuccess: (_, variables) => {
