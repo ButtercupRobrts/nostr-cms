@@ -110,45 +110,25 @@ async function paginateAuthorFilter(
 
     relayCap = Math.max(relayCap, batch.length);
     if (newOnPage === 0) {
-      // A repeated page at a capacity-filled boundary timestamp can hide
-      // events sharing that second — filters have no intra-timestamp cursor.
-      // Probe the boundary second explicitly; unseen events mean the totals
-      // are a lower bound.
-      if (batch.length > 0 && until !== undefined) {
-        try {
-          const probe = await nostr.query(
-            [{ ...filter, since: until, until: until, limit: relayCap + 1 }],
-            { signal },
-          );
-          if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
-            partial = true;
-          } else if (probe.length === relayCap && relayCap > 0) {
-            // Equality is ambiguous: the relay may be hard-capped at relayCap
-            // (second holds more than it serves) or the second is exactly
-            // complete. Independent evidence decides: because `until` is
-            // inclusive, a saturated boundary also blocks anything older —
-            // if older events exist, truncation is proven, not suspected.
-            try {
-              const older = await nostr.query(
-                [{ ...filter, until: until - 1, limit: 1 }],
-                { signal },
-              );
-              if (older.length > 0) {
-                partial = true;
-              } else if (relayCap >= (filter.limit ?? Infinity)) {
-                // No older events; the saturated page filled the request limit —
-                // the cap may still hide events in the boundary second.
-                partial = true;
-              }
-            } catch {
-              partial = true;
-            }
-          }
-        } catch {
+      if (batch.length === 0 || until === undefined) break;
+      // The page repeated: the boundary second may exceed the relay's cap —
+      // filters have no intra-timestamp cursor. Probe it explicitly for
+      // evidence of omission; equality alone is ambiguous and not flagged.
+      try {
+        const probe = await nostr.query(
+          [{ ...filter, since: until, until, limit: relayCap + 1 }],
+          { signal },
+        );
+        if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
           partial = true;
         }
+      } catch {
+        partial = true;
       }
-      break;
+      // `until` is inclusive — step below the boundary second to reach older
+      // events instead of leaving them orphaned behind the repeated page.
+      until = until - 1;
+      continue;
     }
     until = oldest;
     if (page === MAX_PAGES - 1) partial = true;
