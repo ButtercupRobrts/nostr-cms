@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
+import { uploadMediaFile } from "@/lib/mediaProcessing";
 import { useAppContext } from "./useAppContext";
 import { useCurrentUser } from "./useCurrentUser";
 
@@ -33,12 +33,18 @@ export function useUploadFile() {
         }
       }
 
-      const uploader = new BlossomUploader({
-        servers: relays.length > 0 ? relays : ['https://blossom.primal.net/'],
-        signer: user.signer,
-      });
+      // Warn when no Blossom server is configured — the fallback silently
+      // ships uploads to a third-party public server. Deployments should
+      // configure blossomRelays rather than rely on it.
+      if (relays.length === 0) {
+        console.warn('No Blossom server configured — falling back to blossom.primal.net');
+      }
 
-      const tags = await uploader.upload(file);
+      const { tags } = await uploadMediaFile(
+        file,
+        relays.length > 0 ? relays : ['https://blossom.primal.net/'],
+        user.signer,
+      );
       return tags;
     },
   });

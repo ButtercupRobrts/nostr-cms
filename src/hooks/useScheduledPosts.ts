@@ -11,6 +11,7 @@ import type {
   NostrEvent,
 } from '@/types/scheduled';
 import { getSchedulerApiUrl } from '@/lib/scheduler';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type NostrSigner = {
   getPublicKey: () => Promise<string>;
@@ -23,20 +24,25 @@ const API_BASE = getSchedulerApiUrl();
 /**
  * Fetch wrapper that adds NIP-98 Authorization header
  */
-async function fetchWithNip98(urlStr: string, method: string, body?: unknown) {
-  const url = urlStr.startsWith('http') ? urlStr : `${API_BASE}${urlStr}`;
-
-  // 1. Create event kind 27235
-  // We need to access window.nostr for signing
-  const nostr = (window as Window & { nostr?: NostrSigner }).nostr;
-  if (!nostr) {
-    throw new Error('Nostr extension not found');
+async function fetchWithNip98(
+  urlStr: string,
+  method: string,
+  body: unknown,
+  user: { pubkey: string; signer: NostrSigner } | undefined,
+) {
+  if (!user) {
+    throw new Error('Please login first');
   }
+  // NIP-98 requires the 'u' tag to be the absolute request URL — resolve
+  // against the current origin so relative API bases ('/api') sign correctly.
+  const url = new URL(
+    urlStr.startsWith('http') ? urlStr : `${API_BASE}${urlStr}`,
+    window.location.origin,
+  ).href;
 
-  const pubkey = await nostr.getPublicKey();
-
-  // Create the event structure
-  // content, keys, created_at, kind, tags
+  // Sign with the logged-in account's signer — works for extension, nsec and
+  // NIP-46 bunker logins; window.nostr would break non-extension users and
+  // could sign under a different installed account.
   const event = {
     kind: 27235,
     created_at: Math.floor(Date.now() / 1000),
@@ -45,11 +51,10 @@ async function fetchWithNip98(urlStr: string, method: string, body?: unknown) {
       ['method', method],
     ],
     content: '',
-    pubkey: pubkey,
+    pubkey: user.pubkey,
   };
 
-  // 2. Sign
-  const signed = await nostr.signEvent(event);
+  const signed = await user.signer.signEvent(event);
 
   // 3. Create Authorization header
   const token = btoa(JSON.stringify(signed));
@@ -104,12 +109,13 @@ async function fetchWithNip98(urlStr: string, method: string, body?: unknown) {
  * Fetch all scheduled posts for a user
  */
 export function useScheduledPosts(userPubkey: string | undefined, status?: string) {
+  const { user } = useCurrentUser();
   return useQuery({
     queryKey: ['scheduled-posts', userPubkey, status],
     queryFn: async () => {
       if (!userPubkey) return [];
 
-      const posts = await fetchWithNip98('/scheduler/list', 'GET') as ScheduledPost[];
+      const posts = await fetchWithNip98('/scheduler/list', 'GET', undefined, user) as ScheduledPost[];
 
       // Filter by status if requested (API returns all)
       if (status) {
@@ -154,13 +160,14 @@ export function useScheduledPostsStats(userPubkey: string | undefined) {
  * Fetch a single scheduled post by ID
  */
 export function useScheduledPost(id: string | undefined) {
+  const { user } = useCurrentUser();
   return useQuery({
     queryKey: ['scheduled-post', id],
     queryFn: async () => {
       if (!id) return null;
       // Inefficient but API doesn't support get-by-id yet
       // We list all and find one. 
-      const posts = await fetchWithNip98('/scheduler/list', 'GET') as ScheduledPost[];
+      const posts = await fetchWithNip98('/scheduler/list', 'GET', undefined, user) as ScheduledPost[];
       const post = posts.find(p => p.id === id);
       if (!post) throw new Error('Post not found');
       return post;
@@ -182,13 +189,14 @@ export async function schedulePostViaApi(input: {
   signedEvent: NostrEvent;
   relays: string[];
   scheduledFor: Date;
+  user: { pubkey: string; signer: NostrSigner } | undefined;
 }): Promise<ScheduledPost> {
   const body = {
     signed_event: input.signedEvent,
     relays: input.relays,
     scheduled_for: input.scheduledFor.toISOString(),
   };
-  const result = await fetchWithNip98('/scheduler/schedule', 'POST', body);
+  const result = await fetchWithNip98('/scheduler/schedule', 'POST', body, input.user);
   return result as ScheduledPost;
 }
 
@@ -201,10 +209,11 @@ export async function schedulePostViaApi(input: {
  */
 export function useCreateScheduledPost() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async (input: CreateScheduledPostInput) => {
-      return schedulePostViaApi(input);
+      return schedulePostViaApi({ ...input, user });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
@@ -222,10 +231,11 @@ export function useCreateScheduledPost() {
  */
 export function useDeleteScheduledPost() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async ({ id, userPubkey: _userPubkey }: { id: string; userPubkey: string }) => {
-      await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE');
+      await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE', undefined, user);
       return id;
     },
     onSuccess: (_, variables) => {
@@ -240,10 +250,94 @@ export function useDeleteScheduledPost() {
 }
 
 /**
+ * Result of a retry. `cleanupFailed` is set when a fresh copy was scheduled
+ * but deleting the failed original errored — the caller should surface this
+ * so the user removes the original instead of retrying into a duplicate.
+ */
+export interface RetryScheduledPostResult {
+  post: ScheduledPost;
+  cleanupFailed?: boolean;
+}
+
+/**
+ * Retry a failed scheduled post. Two modes:
+ * - Preserve (default): POST /scheduler/retry keeps the signed event —
+ *   including its original created_at, so it publishes at its original
+ *   position in timestamp-sorted feeds.
+ * - Fresh copy: re-signs a clone with created_at set to the retry schedule
+ *   (and refreshes any `published_at` tag), schedules it via the existing
+ *   POST /scheduler/schedule, and deletes the failed original. Requires the
+ *   NIP-07 signer at retry time; the new event lands at the retry position.
+ *   The clone strips `repeat_*` tags — a retried entry no longer occupies
+ *   its original slot in the series timeline, so it must not claim one.
+ *
+ * If the delete fails after the schedule succeeds, the result carries
+ * `cleanupFailed` instead of throwing — the new post exists and must be
+ * shown, and the failed original needs manual removal.
+ */
+export function useRetryScheduledPost() {
+  const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
+
+  return useMutation({
+    mutationFn: async ({
+      post,
+      scheduledFor,
+      freshCopy,
+    }: {
+      post: ScheduledPost;
+      scheduledFor: Date;
+      freshCopy?: boolean;
+    }): Promise<RetryScheduledPostResult> => {
+      if (!freshCopy) {
+        const result = await fetchWithNip98(`/scheduler/retry?id=${post.id}`, 'POST', {
+          scheduled_for: scheduledFor.toISOString(),
+        }, user);
+        return { post: result as ScheduledPost };
+      }
+
+      if (!user) {
+        throw new Error('Please login first');
+      }
+      const createdAt = Math.floor(scheduledFor.getTime() / 1000);
+      const { id: _id, sig: _sig, ...unsigned } = post.signed_event;
+      unsigned.created_at = createdAt;
+      unsigned.tags = unsigned.tags
+        .filter((t) => !t[0].startsWith('repeat_'))
+        .map((t) => (t[0] === 'published_at' ? ['published_at', String(createdAt)] : t));
+      const signedEvent = await user.signer.signEvent(unsigned);
+      if (signedEvent.pubkey !== post.signed_event.pubkey) {
+        throw new Error('Signed in as a different account than the original post author — fresh copy would publish under the wrong pubkey.');
+      }
+
+      const created = await schedulePostViaApi({
+        signedEvent,
+        relays: post.relays,
+        scheduledFor,
+        user,
+      });
+      // The failed original is superseded by the fresh copy. A delete failure
+      // is a partial success, not an error — the new scheduled post exists.
+      try {
+        await fetchWithNip98(`/scheduler/delete?id=${post.id}`, 'DELETE', undefined, user);
+      } catch {
+        return { post: created, cleanupFailed: true };
+      }
+      return { post: created };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduled-posts-stats'] });
+    },
+  });
+}
+
+/**
  * Clear scheduled post history for a specific status (published or failed)
  */
 export function useClearScheduledPostsHistory() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async ({
@@ -259,10 +353,16 @@ export function useClearScheduledPostsHistory() {
         throw new Error('Clearing pending posts in bulk is not supported');
       }
 
-      await Promise.all(ids.map((id) => fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE')));
+      // Sequential — signers (esp. extensions) can fail on concurrent prompts;
+      // on error the remaining ids stay pending rather than in-flight.
+      for (const id of ids) {
+        await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE', undefined, user);
+      }
       return ids.length;
     },
-    onSuccess: (_, variables) => {
+    // onSettled — invalidate even on partial failure so successfully-deleted
+    // entries leave the cache instead of lingering until the next refetch.
+    onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({
         queryKey: ['scheduled-posts', variables.userPubkey],
       });
@@ -279,6 +379,7 @@ export function useClearScheduledPostsHistory() {
  */
 export function useUpdateScheduledPost() {
   const queryClient = useQueryClient();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async ({
@@ -292,7 +393,7 @@ export function useUpdateScheduledPost() {
     }) => {
 
       // 1. Delete old post
-      await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE');
+      await fetchWithNip98(`/scheduler/delete?id=${id}`, 'DELETE', undefined, user);
 
       // 2. Create new post
       if (!updates.signed_event || !updates.scheduled_for || !updates.relays) {
@@ -305,7 +406,7 @@ export function useUpdateScheduledPost() {
         scheduled_for: updates.scheduled_for,
       };
 
-      const result = await fetchWithNip98('/scheduler/schedule', 'POST', body);
+      const result = await fetchWithNip98('/scheduler/schedule', 'POST', body, user);
       return result as ScheduledPost;
     },
     onSuccess: (_, variables) => {

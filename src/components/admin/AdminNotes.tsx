@@ -28,8 +28,7 @@ import { useAppContext } from '@/hooks/useAppContext';
 import { useToast } from '@/hooks/useToast';
 import { useQuery, useInfiniteQuery, type InfiniteData } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { BlossomUploader } from '@nostrify/nostrify/uploaders';
-import { stripImageMetadata } from '@/lib/mediaProcessing';
+import { uploadMediaFiles, mediaMimeType, type MediaUploadError } from '@/lib/mediaProcessing';
 import { queryWithNip65Fanout, getNip65ReadRelays } from '@/lib/queryRelays';
 import {
   Plus,
@@ -596,8 +595,7 @@ export default function AdminNotes() {
   const handleFileUpload = async (files: File[]) => {
     if (!files || files.length === 0 || !user) return;
 
-    const defaultBlossomRelay = blossomRelays[0];
-    if (!defaultBlossomRelay) {
+    if (blossomRelays.length === 0) {
       toast({
         title: 'No Blossom Server',
         description: 'Please configure a Blossom server in Media settings first.',
@@ -609,32 +607,9 @@ export default function AdminNotes() {
     setIsUploading(true);
 
     try {
-      const urls: string[] = [];
+      const { results, warnings } = await uploadMediaFiles(files, blossomRelays, user.signer);
 
-      for (const file of files) {
-        // Strip metadata from images before upload
-        const { file: strippedFile, stripped, reason } = await stripImageMetadata(file);
-        if (!stripped && reason === 'gif') {
-          toast({
-            title: 'Metadata not stripped',
-            description: `${file.name}: GIF files cannot be metadata-stripped. EXIF/GPS data may be visible.`,
-            variant: 'destructive',
-          });
-        }
-
-        const uploader = new BlossomUploader({
-          servers: [defaultBlossomRelay],
-          signer: user.signer,
-        });
-
-        const result = await uploader.upload(strippedFile);
-        if (result && result.length > 0) {
-          const urlTag = result.find((tag: string[]) => tag[0] === 'url');
-          if (urlTag && urlTag[1]) {
-            urls.push(urlTag[1]);
-          }
-        }
-      }
+      const urls = results.map(r => r.url).filter(Boolean);
 
       if (urls.length > 0) {
         const urlText = urls.join('\n');
@@ -648,16 +623,23 @@ export default function AdminNotes() {
           setContent(prev => prev + '\n' + urlText);
         }
 
+        // TOAST_LIMIT is 1 — merge warnings into the success toast or they get displaced
         toast({
           title: 'Upload Successful',
-          description: `Uploaded ${urls.length} file(s) to ${defaultBlossomRelay}`,
+          description: `Uploaded ${urls.length} file(s) to ${blossomRelays.length} server(s)` +
+            (warnings.length ? ` — ${warnings.join(' ')}` : ''),
+          variant: warnings.length ? 'destructive' : 'default',
         });
       }
     } catch (err) {
       console.error('Upload failed:', err);
+      // uploadMediaFiles carries warnings from files that already uploaded —
+      // merge into the error toast so they aren't lost to the failure
+      const errWarnings = (err as MediaUploadError).warnings;
       toast({
         title: 'Upload Failed',
-        description: (err as Error).message,
+        description: (err as Error).message +
+          (errWarnings?.length ? ` — ${errWarnings.join(' ')}` : ''),
         variant: 'destructive',
       });
     } finally {
@@ -687,13 +669,28 @@ export default function AdminNotes() {
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    // Required for drop to fire for file drags. Limited to 'Files' so native
+    // text-drop behavior into the textarea is untouched.
+    if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+  };
+
   const handleDrop = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    // Claim all file drops (even non-media) so the browser can't navigate away.
+    e.preventDefault();
+    // file.type can be empty (e.g. .mkv on Linux) — sniff by extension
     const files = Array.from(e.dataTransfer.files)
-      .filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
+      .filter(file => mediaMimeType(file).startsWith('image/') || mediaMimeType(file).startsWith('video/'));
 
     if (files.length > 0) {
-      e.preventDefault();
       handleFileUpload(files);
+    } else {
+      toast({
+        title: 'Unsupported files',
+        description: 'Only images and videos can be uploaded.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -920,12 +917,19 @@ export default function AdminNotes() {
                 </TabsList>
 
                 <TabsContent value="edit" className="mt-2">
+                  {isUploading && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading media...
+                    </div>
+                  )}
                   <MentionTextarea
                     ref={textareaRef}
                     value={content}
                     onChange={setContent}
                     onPaste={handlePaste}
                     onDrop={handleDrop}
+                    onDragOver={handleDragOver}
                     placeholder="Write something... (Paste or drop media files to upload, type @ to mention)"
                     className="min-h-[200px] resize-none"
                     required
