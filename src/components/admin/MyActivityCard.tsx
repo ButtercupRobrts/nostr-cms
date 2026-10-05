@@ -112,11 +112,10 @@ async function paginateAuthorFilter(
     if (newOnPage === 0) {
       if (batch.length === 0 || until === undefined) break;
       // The page repeated: the boundary second may exceed the relay's cap —
-      // filters have no intra-timestamp cursor. Probe it explicitly.
-      // Evidence of omission: unseen IDs or more than the observed cap.
-      // Equality is ambiguous — it flags partial only with independent
-      // evidence of truncation: older events that the saturated inclusive
-      // cursor could never have reached.
+      // filters have no intra-timestamp cursor. Probe it for evidence of
+      // omission: unseen IDs or a response above the observed cap. Equality
+      // is ambiguous and older events are not evidence — they get fetched on
+      // the way down.
       try {
         const probe = await nostr.query(
           [{ ...filter, since: until, until, limit: relayCap + 1 }],
@@ -124,18 +123,16 @@ async function paginateAuthorFilter(
         );
         if (probe.length > relayCap || probe.some((evt) => !events.has(evt.id))) {
           partial = true;
-        } else if (probe.length === relayCap && relayCap > 0) {
-          const older = await nostr.query(
-            [{ ...filter, until: until - 1, limit: 1 }],
-            { signal },
-          );
-          if (older.length > 0) partial = true;
         }
       } catch {
         partial = true;
       }
-      // `until` is inclusive — step below the boundary second to reach older
-      // events instead of leaving them orphaned behind the repeated page.
+      // `until` is inclusive — step below the boundary second to keep reading
+      // older events rather than stopping at the repeated page.
+      if (page === MAX_PAGES - 1) {
+        partial = true; // budget spent while history may remain unread
+        break;
+      }
       until = until - 1;
       continue;
     }
