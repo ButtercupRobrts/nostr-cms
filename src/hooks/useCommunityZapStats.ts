@@ -229,7 +229,13 @@ export function useCommunityZapStats(timeRange: CommunityTimeRange = 'all', enab
           break;
         }
         pageCapacity = Math.max(pageCapacity, batch.length);
-        if (since > 0 && oldest <= since) break;
+        if (since > 0 && oldest <= since) {
+          // If this page filled to capacity and its oldest receipt lands on the
+          // range floor, the boundary second may hold unseen receipts — flag
+          // the uncertainty instead of presenting a truncated range as full.
+          if (oldest === since && batch.length >= pageCapacity) suspectedPartial = true;
+          break;
+        }
         cursor = oldest;
         if (page === MAX_PAGES - 1) partial = true;
       }
