@@ -438,20 +438,6 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           }
         }
 
-        // TEMP DEBUG: batch trace for diagnosing prod stall (remove before upstream PR)
-        console.debug('[zaplytics]', {
-          batch: prev.currentBatch + 1,
-          until: currentUntil,
-          raw: events.length,
-          valid: validReceipts.length,
-          newUnique: prevNewUnique.length,
-          primary: primaryResult?.status,
-          primaryEvents: primaryResult?.events.length,
-          streak: answeredZeroStreakRef.current,
-          isComplete,
-          total: allReceipts.length,
-        });
-
         return {
           ...prev,
           receipts: filteredReceipts,
