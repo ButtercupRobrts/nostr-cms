@@ -357,12 +357,14 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         const primaryInWindow = currentUntil
           ? primaryResult.events.filter(e => e.created_at <= currentUntil)
           : primaryResult.events;
-        // Only validated receipts may move the primary's frontier — a
-        // malformed receipt with an old timestamp would otherwise skip
-        // unreturned valid history permanently.
-        const validPrimary = primaryInWindow.filter(e => isValidZapReceipt(e as NostrEvent));
-        if (validPrimary.length > 0) {
-          const oldest = Math.min(...validPrimary.map(e => e.created_at));
+        // The frontier is the raw page boundary (in-window minimum), not
+        // the minimum over valid receipts: a page is a contiguous newest
+        // slice, so nothing within it can be skipped — and a page that is
+        // invalid-only must still advance past its boundary or older valid
+        // history on that relay stays unreachable. The inWindow filter
+        // already prevents an until-violating event from moving it back.
+        if (primaryInWindow.length > 0) {
+          const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
           primaryOldestRef.current = primaryOldestRef.current === null
             ? oldest
             : Math.min(primaryOldestRef.current, oldest);
@@ -376,10 +378,11 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           : Math.min(mergedOldestRef.current, batchMin);
       }
 
-      // A primary that answered but has produced no valid events has proven
-      // it holds nothing for this pubkey — a supplemental relay's cursor may
-      // then lead. A rejected page is inconclusive and leaves the flag unset.
-      if (primaryFulfilled && primaryOldestRef.current === null) {
+      // Proven empty requires a *zero-event* answer: the relay responded and
+      // returned nothing in a window it would have filled. A nonempty page of
+      // invalid receipts is not emptiness — its boundary still advanced the
+      // cursor above. A rejected page is inconclusive and leaves the flag unset.
+      if (primaryFulfilled && primaryResult.events.length === 0) {
         primaryProvenEmptyRef.current = true;
       }
 
