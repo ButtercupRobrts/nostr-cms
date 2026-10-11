@@ -219,12 +219,13 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
     vi.useRealTimers();
   });
 
-  it('does not let an invalid primary event move the cursor past valid history', async () => {
+  it('advances the frontier past an invalid primary event to the raw page boundary', async () => {
     const invalid = receipt(10);
     invalid.tags = []; // no bolt11 tag → fails isValidZapReceipt
 
-    // Primary page: valid events at 100/90 plus a malformed event at 10.
-    // Cursor must come from valid receipts only (until=89, not 9).
+    // Primary page is a contiguous newest slice — nothing at 11-89 exists on
+    // that relay. The invalid event must still advance the frontier so the
+    // next page below it (where valid@9.. could live) stays reachable.
     fanoutMock
       .mockResolvedValueOnce(page(
         source('fulfilled', [receipt(100), receipt(90), invalid]),
@@ -235,7 +236,33 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
 
     await drainBatches(2);
 
-    expect(callUntil(2)).toBe(89);
+    expect(callUntil(2)).toBe(9);
+  });
+
+  it('does not mark an invalid-only primary page as proven empty', async () => {
+    const invalid = receipt(80);
+    invalid.tags = [];
+
+    // Batch 1: primary returns ONLY an invalid event; supplemental returns
+    // an old valid receipt. Primary answered but proved nothing about its
+    // own contents — the supplemental cursor must not take over.
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [invalid]),
+        source('fulfilled', [receipt(10)], EXTRA_RELAY),
+      ))
+      // Batch 2: primary's frontier advanced past the invalid event (until=79)
+      // → valid@70 below the boundary is still reachable.
+      .mockResolvedValue(page(
+        source('fulfilled', [receipt(70)]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ));
+
+    renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(2);
+
+    expect(callUntil(2)).toBe(79);
   });
 
   it('keeps the filter unconstrained while the primary has never answered', async () => {
