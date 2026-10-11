@@ -126,6 +126,11 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   // justifies advancing the cursor by the raw boundary, so older history
   // stays reachable while junk windows eventually yield.
   const invalidOnlyStreakRef = useRef(0);
+  // Consecutive fulfilled primary pages containing ONLY out-of-window
+  // ('until'-violating) events. A brief violator gets a bounded recovery
+  // chance before the merged cursor is allowed to lead; a persistent one
+  // yields so supplemental pagination is not blocked forever.
+  const primaryViolationStreakRef = useRef(0);
   // Consecutive zero-new pages where the primary relay actually answered.
   // Only these count toward 'all'-time completion.
   const answeredZeroStreakRef = useRef(0);
@@ -221,6 +226,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
     primaryProvenEmptyRef.current = false;
     mergedOldestRef.current = null;
     invalidOnlyStreakRef.current = 0;
+    primaryViolationStreakRef.current = 0;
     answeredZeroStreakRef.current = 0;
 
     // Only reset when user changes, not time range
@@ -359,18 +365,33 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       // Track the primary relay's frontier — this drives the next batch's
       // until cursor. Only events within the window count, so an
       // until-violating primary can't corrupt its own cursor.
+      // Whether this batch moved the primary frontier — a boundary-advancing
+      // page is progress even when it yields no new valid receipts, so it
+      // must not consume the no-progress or answered-empty budgets.
+      let frontierAdvanced = false;
+
       if (primaryFulfilled) {
         const primaryInWindow = currentUntil
           ? primaryResult.events.filter(e => e.created_at <= currentUntil)
           : primaryResult.events;
 
         if (primaryInWindow.length === 0) {
-          // Answered but nothing inside the requested window — 'proven
-          // empty' for fallback purposes whether it returned zero events or
-          // only out-of-window ones. A rejected page stays inconclusive.
-          primaryProvenEmptyRef.current = true;
+          if (primaryResult.events.length === 0) {
+            // Genuinely empty answer to a request the relay honored —
+            // proven window-empty; the supplemental cursor may lead.
+            primaryProvenEmptyRef.current = true;
+          } else {
+            // Only out-of-window ('until'-violating) events: inconclusive.
+            // A persistent violator yields the cursor after confirmation;
+            // a transient one gets a bounded chance to recover first.
+            primaryViolationStreakRef.current += 1;
+            if (primaryViolationStreakRef.current >= 2) {
+              primaryProvenEmptyRef.current = true;
+            }
+          }
           invalidOnlyStreakRef.current = 0;
         } else {
+          primaryViolationStreakRef.current = 0;
           const validPrimary = primaryInWindow.filter(e => isValidZapReceipt(e as NostrEvent));
 
           if (validPrimary.length > 0) {
@@ -378,9 +399,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
             // can't move the frontier past unreturned valid history.
             invalidOnlyStreakRef.current = 0;
             const oldest = Math.min(...validPrimary.map(e => e.created_at));
-            primaryOldestRef.current = primaryOldestRef.current === null
+            frontierAdvanced = primaryOldestRef.current === null || oldest < primaryOldestRef.current;
+            primaryOldestRef.current = frontierAdvanced
               ? oldest
-              : Math.min(primaryOldestRef.current, oldest);
+              : primaryOldestRef.current;
           } else {
             // Invalid-only page: mid-window garbage could be a sparse or
             // garbled response, so advance past its raw boundary only after
@@ -390,9 +412,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
             if (invalidOnlyStreakRef.current >= 2) {
               invalidOnlyStreakRef.current = 0;
               const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
-              primaryOldestRef.current = primaryOldestRef.current === null
+              frontierAdvanced = primaryOldestRef.current === null || oldest < primaryOldestRef.current;
+              primaryOldestRef.current = frontierAdvanced
                 ? oldest
-                : Math.min(primaryOldestRef.current, oldest);
+                : primaryOldestRef.current;
             }
           }
         }
@@ -411,7 +434,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       // (consecutiveZeroResults) stops it, leaving a manual retry available.
       if (newUnique.length > 0) {
         answeredZeroStreakRef.current = 0;
-      } else if (timeRange === 'all' && primaryFulfilled) {
+      } else if (timeRange === 'all' && primaryFulfilled && !frontierAdvanced) {
         answeredZeroStreakRef.current += 1;
       }
 
@@ -501,7 +524,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
           totalFetched: filteredReceipts.length,
           relayLimit: detectedLimit,
           consecutiveFailures: 0, // Reset failures on success
-          consecutiveZeroResults: prevNewUnique.length === 0 ? prev.consecutiveZeroResults + 1 : 0, // Track zero results
+          consecutiveZeroResults: prevNewUnique.length === 0 && !frontierAdvanced ? prev.consecutiveZeroResults + 1 : 0, // Track zero results
         };
       });
 
@@ -511,9 +534,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         // time also keep going through zero-new pages — a page of cached
         // duplicates is not proof of end-of-data. The no-progress gate
         // bounds retries; the answered streak decides completion.
-        const nextNoProgress = newUnique.length === 0
-          ? currentState.consecutiveZeroResults + 1
-          : 0;
+        const madeProgress = newUnique.length > 0 || frontierAdvanced;
+        const nextNoProgress = madeProgress
+          ? 0
+          : currentState.consecutiveZeroResults + 1;
         const doneLoading = stateRef.current.isComplete ||
           (timeRange === 'all' && answeredZeroStreakRef.current >= 3);
         // For 'all', a zero-new page of cached duplicates is not a stopping
