@@ -377,18 +377,26 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
     expect(result.current.loadingState.totalFetched).toBe(4);
   });
 
-  it('treats an until-ignoring primary as window-empty so the supplemental cursor leads', async () => {
+  it('gives an until-ignoring primary a bounded recovery before the supplemental cursor leads', async () => {
     // '7d' preset sets since+until boundaries. The primary ignores the until
-    // boundary and keeps returning a future event; the supplemental relay
-    // honors it. With nothing in-window, the primary is proven window-empty
-    // and the merged cursor must advance instead of repeating the window.
+    // boundary and keeps returning a future event. One violation is
+    // inconclusive (batch 2 repeats the window — a recovering primary could
+    // still supply its in-range history); a second consecutive violation is
+    // confirmed and the merged cursor leads (batch 3: until=now-4001).
+    // Supplemental returns full pages so the preset-range chain continues.
     const now = Math.floor(Date.now() / 1000);
     const outOfWindow = receipt(now + 100);
+    const page1 = [...Array.from({ length: 99 }, (_, i) => receipt(now - 1000 - i)), receipt(now - 2000)];
+    const page2 = [...Array.from({ length: 99 }, (_, i) => receipt(now - 3000 - i)), receipt(now - 4000)];
 
     fanoutMock
       .mockResolvedValueOnce(page(
         source('fulfilled', [outOfWindow]),
-        source('fulfilled', [receipt(now - 1000), receipt(now - 2000)], EXTRA_RELAY),
+        source('fulfilled', page1, EXTRA_RELAY),
+      ))
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [outOfWindow]),
+        source('fulfilled', page2, EXTRA_RELAY),
       ))
       .mockResolvedValue(page(
         source('fulfilled', [outOfWindow]),
@@ -397,8 +405,53 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
 
     renderHook(() => useZapAnalytics('7d', undefined, PUBKEY), { wrapper });
 
-    await drainBatches(2);
+    await drainBatches(3);
 
-    expect(callUntil(2)).toBe(now - 2001);
+    expect(callUntil(2)).toBe(now);
+    expect(callUntil(3)).toBe(now - 4001);
+  });
+
+  it('does not spend the no-progress budget on frontier-advancing invalid pages', async () => {
+    const i80 = receipt(80);
+    i80.tags = [];
+    const i79 = receipt(79);
+    i79.tags = [];
+
+    // valid@100, then two invalid-only pages at 80 (2nd advances cursor to
+    // 79 — progress resets the no-progress count), then two at 79 (advance
+    // to 78), then valid@70 becomes reachable. Without progress resets the
+    // third zero-new page would have stopped auto-loading early.
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [receipt(100)]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [i80]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [i80]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [i79]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [i79]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValue(page(
+        source('fulfilled', [receipt(70)]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ));
+
+    const { result } = renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(6);
+
+    expect(callUntil(6)).toBe(78);
+    expect(result.current.loadingState.totalFetched).toBe(2);
   });
 });
