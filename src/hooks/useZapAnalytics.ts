@@ -267,12 +267,6 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       const { since, until } = getDateRange(timeRange, customRange);
 
       // Calculate the correct until timestamp for pagination.
-      // The cursor is driven by the primary (default) relay's oldest event.
-      // Supplemental relays may contribute events older than the primary's
-      // frontier — letting those move the cursor would jump the window back
-      // past unfetched primary events and leave a permanent gap.
-      // Falls back to the merged-cache minimum when the primary has never
-      // returned anything (e.g. viewing a non-member's zaps).
       let currentUntil = until;
       // Cursor precedence:
       // 1. primary's oldest valid event — drives pagination normally.
@@ -491,13 +485,10 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
 
       // Schedule next automatic batch if appropriate
       if (isAutomatic) {
-        // Continue auto-loading as long as we got NEW results.
-        // Using newUnique (deduplicated) prevents infinite loops where
-        // the relay keeps returning the same cached receipts.
-        // EXCEPTION: for 'all' time, if we got 0 events (likely timeout),
-        // keep retrying — the relay may have more data that just didn't
-        // arrive in time. The isComplete logic above ensures we stop when
-        // the relay genuinely returns all duplicates (end of data).
+        // Continue auto-loading as long as we got NEW results; for 'all'
+        // time also keep going through zero-new pages — a page of cached
+        // duplicates is not proof of end-of-data. The no-progress gate
+        // bounds retries; the answered streak decides completion.
         const nextNoProgress = newUnique.length === 0
           ? currentState.consecutiveZeroResults + 1
           : 0;
