@@ -121,11 +121,6 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   // when receipts are appended. stateRef lags a render behind; rapid
   // consecutive batches can fire before the flush and need the true minimum.
   const mergedOldestRef = useRef<number | null>(null);
-  // Consecutive primary pages with in-window events but zero valid receipts.
-  // A single such page may be sparse or garbled — only a confirmed repeat
-  // justifies advancing the cursor by the raw boundary, so older history
-  // stays reachable while junk windows eventually yield.
-  const invalidOnlyStreakRef = useRef(0);
   // Consecutive zero-new pages where the primary relay actually answered.
   // Only these count toward 'all'-time completion.
   const answeredZeroStreakRef = useRef(0);
@@ -220,7 +215,6 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
     primaryOldestRef.current = null;
     primaryProvenEmptyRef.current = false;
     mergedOldestRef.current = null;
-    invalidOnlyStreakRef.current = 0;
     answeredZeroStreakRef.current = 0;
 
     // Only reset when user changes, not time range
@@ -356,45 +350,24 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       const currentCacheIds = new Set(currentState.allReceiptsCache.map(r => r.id));
       const newUnique = validReceipts.filter(r => !currentCacheIds.has(r.id));
 
-      // Track the primary relay's frontier — this drives the next batch's
-      // until cursor. Only events within the window count, so an
+      // Track the primary relay's oldest event — this drives the next
+      // batch's until cursor. Only events within the window count, so an
       // until-violating primary can't corrupt its own cursor.
-      if (primaryFulfilled) {
+      if (primaryFulfilled && primaryResult.events.length > 0) {
         const primaryInWindow = currentUntil
           ? primaryResult.events.filter(e => e.created_at <= currentUntil)
           : primaryResult.events;
-
-        if (primaryInWindow.length === 0) {
-          // Answered but nothing inside the requested window — 'proven
-          // empty' for fallback purposes whether it returned zero events or
-          // only out-of-window ones. A rejected page stays inconclusive.
-          primaryProvenEmptyRef.current = true;
-          invalidOnlyStreakRef.current = 0;
-        } else {
-          const validPrimary = primaryInWindow.filter(e => isValidZapReceipt(e as NostrEvent));
-
-          if (validPrimary.length > 0) {
-            // Valid receipts are trustworthy anchors: an invalid outlier
-            // can't move the frontier past unreturned valid history.
-            invalidOnlyStreakRef.current = 0;
-            const oldest = Math.min(...validPrimary.map(e => e.created_at));
-            primaryOldestRef.current = primaryOldestRef.current === null
-              ? oldest
-              : Math.min(primaryOldestRef.current, oldest);
-          } else {
-            // Invalid-only page: mid-window garbage could be a sparse or
-            // garbled response, so advance past its raw boundary only after
-            // seeing a consecutive repeat — otherwise older valid history
-            // below it would be cut off permanently.
-            invalidOnlyStreakRef.current += 1;
-            if (invalidOnlyStreakRef.current >= 2) {
-              invalidOnlyStreakRef.current = 0;
-              const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
-              primaryOldestRef.current = primaryOldestRef.current === null
-                ? oldest
-                : Math.min(primaryOldestRef.current, oldest);
-            }
-          }
+        // The frontier is the raw page boundary (in-window minimum), not
+        // the minimum over valid receipts: a page is a contiguous newest
+        // slice, so nothing within it can be skipped — and a page that is
+        // invalid-only must still advance past its boundary or older valid
+        // history on that relay stays unreachable. The inWindow filter
+        // already prevents an until-violating event from moving it back.
+        if (primaryInWindow.length > 0) {
+          const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
+          primaryOldestRef.current = primaryOldestRef.current === null
+            ? oldest
+            : Math.min(primaryOldestRef.current, oldest);
         }
       }
 
@@ -403,6 +376,14 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         mergedOldestRef.current = mergedOldestRef.current === null
           ? batchMin
           : Math.min(mergedOldestRef.current, batchMin);
+      }
+
+      // Proven empty requires a *zero-event* answer: the relay responded and
+      // returned nothing in a window it would have filled. A nonempty page of
+      // invalid receipts is not emptiness — its boundary still advanced the
+      // cursor above. A rejected page is inconclusive and leaves the flag unset.
+      if (primaryFulfilled && primaryResult.events.length === 0) {
+        primaryProvenEmptyRef.current = true;
       }
 
       // 'all'-time completion streak: only zero-new pages where the primary

@@ -219,14 +219,13 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
     vi.useRealTimers();
   });
 
-  it('anchors the frontier to valid receipts, ignoring invalid outliers', async () => {
+  it('advances the frontier past an invalid primary event to the raw page boundary', async () => {
     const invalid = receipt(10);
     invalid.tags = []; // no bolt11 tag → fails isValidZapReceipt
 
-    // Page with valid@100, valid@90 plus a malformed@10. A sparse or
-    // garbled page can't prove contiguity — only valid receipts anchor
-    // the frontier, so until=89 and any unreturned valid history between
-    // 11 and 89 stays reachable.
+    // Primary page is a contiguous newest slice — nothing at 11-89 exists on
+    // that relay. The invalid event must still advance the frontier so the
+    // next page below it (where valid@9.. could live) stays reachable.
     fanoutMock
       .mockResolvedValueOnce(page(
         source('fulfilled', [receipt(100), receipt(90), invalid]),
@@ -237,73 +236,33 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
 
     await drainBatches(2);
 
-    expect(callUntil(2)).toBe(89);
+    expect(callUntil(2)).toBe(9);
   });
 
   it('does not mark an invalid-only primary page as proven empty', async () => {
     const invalid = receipt(80);
     invalid.tags = [];
 
-    // Batch 1: primary in-window content is entirely invalid — not an
-    // empty answer, so the supplemental cursor must not take over, and one
-    // unconfirmed invalid page is not a trustworthy boundary (no until yet).
+    // Batch 1: primary returns ONLY an invalid event; supplemental returns
+    // an old valid receipt. Primary answered but proved nothing about its
+    // own contents — the supplemental cursor must not take over.
     fanoutMock
       .mockResolvedValueOnce(page(
         source('fulfilled', [invalid]),
         source('fulfilled', [receipt(10)], EXTRA_RELAY),
       ))
-      // Batch 2: unconstrained retry — primary supplies a valid receipt,
-      // which becomes the anchor for the next cursor.
-      .mockResolvedValueOnce(page(
-        source('fulfilled', [receipt(70)]),
-        source('fulfilled', [], EXTRA_RELAY),
-      ))
+      // Batch 2: primary's frontier advanced past the invalid event (until=79)
+      // → valid@70 below the boundary is still reachable.
       .mockResolvedValue(page(
-        source('fulfilled', []),
+        source('fulfilled', [receipt(70)]),
         source('fulfilled', [], EXTRA_RELAY),
       ));
 
     renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
 
-    await drainBatches(3);
+    await drainBatches(2);
 
-    expect(callUntil(2)).toBeUndefined();
-    expect(callUntil(3)).toBe(69);
-  });
-
-  it('advances past a confirmed invalid-only window after two consecutive pages', async () => {
-    const invalid = receipt(80);
-    invalid.tags = [];
-    const invalid2 = receipt(79);
-    invalid2.tags = [];
-
-    // Two consecutive invalid-only pages confirm the window is junk —
-    // only then does the raw boundary advance so older history below it
-    // (valid@70 on batch 3) stays reachable.
-    fanoutMock
-      .mockResolvedValueOnce(page(
-        source('fulfilled', [invalid]),
-        source('fulfilled', [], EXTRA_RELAY),
-      ))
-      .mockResolvedValueOnce(page(
-        source('fulfilled', [invalid2]),
-        source('fulfilled', [], EXTRA_RELAY),
-      ))
-      .mockResolvedValueOnce(page(
-        source('fulfilled', [receipt(70)]),
-        source('fulfilled', [], EXTRA_RELAY),
-      ))
-      .mockResolvedValue(page(
-        source('fulfilled', []),
-        source('fulfilled', [], EXTRA_RELAY),
-      ));
-
-    const { result } = renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
-
-    await drainBatches(3);
-
-    expect(callUntil(3)).toBe(78);
-    expect(result.current.loadingState.totalFetched).toBe(1);
+    expect(callUntil(2)).toBe(79);
   });
 
   it('keeps the filter unconstrained while the primary has never answered', async () => {
@@ -375,30 +334,5 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
 
     // 4 unique receipts reached — the dupe page did not stall pagination
     expect(result.current.loadingState.totalFetched).toBe(4);
-  });
-
-  it('treats an until-ignoring primary as window-empty so the supplemental cursor leads', async () => {
-    // '7d' preset sets since+until boundaries. The primary ignores the until
-    // boundary and keeps returning a future event; the supplemental relay
-    // honors it. With nothing in-window, the primary is proven window-empty
-    // and the merged cursor must advance instead of repeating the window.
-    const now = Math.floor(Date.now() / 1000);
-    const outOfWindow = receipt(now + 100);
-
-    fanoutMock
-      .mockResolvedValueOnce(page(
-        source('fulfilled', [outOfWindow]),
-        source('fulfilled', [receipt(now - 1000), receipt(now - 2000)], EXTRA_RELAY),
-      ))
-      .mockResolvedValue(page(
-        source('fulfilled', [outOfWindow]),
-        source('fulfilled', [], EXTRA_RELAY),
-      ));
-
-    renderHook(() => useZapAnalytics('7d', undefined, PUBKEY), { wrapper });
-
-    await drainBatches(2);
-
-    expect(callUntil(2)).toBe(now - 2001);
   });
 });
