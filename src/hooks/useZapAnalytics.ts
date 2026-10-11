@@ -112,6 +112,15 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   // Oldest event timestamp ever returned by the primary (default) relay.
   // Drives the pagination cursor so supplemental relays can't move it.
   const primaryOldestRef = useRef<number | null>(null);
+  // True once the primary has answered but produced no valid event while it
+  // held the frontier — distinguishes "proven empty" (supplemental cursor may
+  // lead) from "never answered" (keep probing the full range so a recovering
+  // primary can supply history a supplemental relay's older events would hide).
+  const primaryProvenEmptyRef = useRef(false);
+  // Oldest event timestamp across the merged cache, updated synchronously
+  // when receipts are appended. stateRef lags a render behind; rapid
+  // consecutive batches can fire before the flush and need the true minimum.
+  const mergedOldestRef = useRef<number | null>(null);
   // Consecutive zero-new pages where the primary relay actually answered.
   // Only these count toward 'all'-time completion.
   const answeredZeroStreakRef = useRef(0);
@@ -204,6 +213,8 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
     }
     isLoadingRef.current = false;
     primaryOldestRef.current = null;
+    primaryProvenEmptyRef.current = false;
+    mergedOldestRef.current = null;
     answeredZeroStreakRef.current = 0;
 
     // Only reset when user changes, not time range
@@ -226,6 +237,7 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
   const loadMoreZaps = useCallback(async (isAutomatic = false) => {
     // Get the current state fresh to avoid closure issues
     const currentState = stateRef.current;
+
 
     // answeredZeroStreakRef is checked alongside isComplete because state
     // updates may not have flushed yet when a scheduled batch fires.
@@ -262,9 +274,16 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
       // Falls back to the merged-cache minimum when the primary has never
       // returned anything (e.g. viewing a non-member's zaps).
       let currentUntil = until;
-      const cursorBase = primaryOldestRef.current ?? (currentState.allReceiptsCache.length > 0
-        ? Math.min(...currentState.allReceiptsCache.map(r => r.created_at))
-        : null);
+      // Cursor precedence:
+      // 1. primary's oldest valid event — drives pagination normally.
+      // 2. merged-cache minimum — only once the primary has proven it holds
+      //    no data for this pubkey (accounts that exist only on supplemental
+      //    relays need the merged cursor to paginate).
+      // 3. no until — while the primary hasn't answered at all: a stale
+      //    supplemental event must not cut off its unqueried newer history.
+      const cursorBase = primaryOldestRef.current
+        ?? (primaryProvenEmptyRef.current ? mergedOldestRef.current : null);
+
       if (cursorBase !== null) {
         const paginationUntil = cursorBase - 1;
 
@@ -344,12 +363,30 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         const primaryInWindow = currentUntil
           ? primaryResult.events.filter(e => e.created_at <= currentUntil)
           : primaryResult.events;
-        if (primaryInWindow.length > 0) {
-          const oldest = Math.min(...primaryInWindow.map(e => e.created_at));
+        // Only validated receipts may move the primary's frontier — a
+        // malformed receipt with an old timestamp would otherwise skip
+        // unreturned valid history permanently.
+        const validPrimary = primaryInWindow.filter(e => isValidZapReceipt(e as NostrEvent));
+        if (validPrimary.length > 0) {
+          const oldest = Math.min(...validPrimary.map(e => e.created_at));
           primaryOldestRef.current = primaryOldestRef.current === null
             ? oldest
             : Math.min(primaryOldestRef.current, oldest);
         }
+      }
+
+      if (newUnique.length > 0) {
+        const batchMin = Math.min(...newUnique.map(r => r.created_at));
+        mergedOldestRef.current = mergedOldestRef.current === null
+          ? batchMin
+          : Math.min(mergedOldestRef.current, batchMin);
+      }
+
+      // A primary that answered but has produced no valid events has proven
+      // it holds nothing for this pubkey — a supplemental relay's cursor may
+      // then lead. A rejected page is inconclusive and leaves the flag unset.
+      if (primaryFulfilled && primaryOldestRef.current === null) {
+        primaryProvenEmptyRef.current = true;
       }
 
       // 'all'-time completion streak: only zero-new pages where the primary
@@ -461,8 +498,17 @@ function useProgressiveZapReceipts(timeRange: TimeRange = '7d', customRange?: Cu
         // keep retrying — the relay may have more data that just didn't
         // arrive in time. The isComplete logic above ensures we stop when
         // the relay genuinely returns all duplicates (end of data).
-        const shouldContinueAutoLoad = newUnique.length > 0 ||
-          (timeRange === 'all' && validReceipts.length === 0 && !stateRef.current.isComplete);
+        const nextNoProgress = newUnique.length === 0
+          ? currentState.consecutiveZeroResults + 1
+          : 0;
+        const doneLoading = stateRef.current.isComplete ||
+          (timeRange === 'all' && answeredZeroStreakRef.current >= 3);
+        // For 'all', a zero-new page of cached duplicates is not a stopping
+        // condition — continue until completion or the bounded no-progress
+        // gate applies. Other ranges still require new results to continue.
+        const shouldContinueAutoLoad = !doneLoading && (timeRange === 'all'
+          ? nextNoProgress < 3
+          : newUnique.length > 0);
 
         if (shouldContinueAutoLoad) {
           scheduleAutoLoad('auto', ZAP_FETCH_CONFIG.BATCH_DELAY_MS);

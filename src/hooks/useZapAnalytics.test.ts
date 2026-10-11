@@ -208,3 +208,104 @@ describe('useZapAnalytics all-time pagination', () => {
     expect(result.current.loadingState.isComplete).toBe(false);
   });
 });
+
+describe('useZapAnalytics cursor edge cases (review findings)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    fanoutMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not let an invalid primary event move the cursor past valid history', async () => {
+    const invalid = receipt(10);
+    invalid.tags = []; // no bolt11 tag → fails isValidZapReceipt
+
+    // Primary page: valid events at 100/90 plus a malformed event at 10.
+    // Cursor must come from valid receipts only (until=89, not 9).
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [receipt(100), receipt(90), invalid]),
+      ))
+      .mockResolvedValue(page(source('fulfilled', [])));
+
+    renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(2);
+
+    expect(callUntil(2)).toBe(89);
+  });
+
+  it('keeps the filter unconstrained while the primary has never answered', async () => {
+    // Batch 1: primary rejected, supplemental returns an old receipt at 10.
+    // The next query must NOT use until=9 — a recovering primary still has
+    // unqueried newer history above that timestamp.
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('rejected', []),
+        source('fulfilled', [receipt(10)], EXTRA_RELAY),
+      ))
+      // Batch 2: primary recovers with newer receipts
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [receipt(90), receipt(80)]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValue(page(source('fulfilled', []), source('fulfilled', [], EXTRA_RELAY)));
+
+    renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(2);
+
+    expect(callUntil(2)).toBeUndefined();
+  });
+
+  it('lets the supplemental cursor lead once the primary is proven empty', async () => {
+    // Batch 1: primary answers EMPTY (fulfilled, no events), supplemental
+    // returns data. Primary has proven it holds nothing → mergedMin leads.
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('fulfilled', []),
+        source('fulfilled', [receipt(50), receipt(40)], EXTRA_RELAY),
+      ))
+      .mockResolvedValue(page(source('fulfilled', []), source('fulfilled', [], EXTRA_RELAY)));
+
+    renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(2);
+
+    expect(callUntil(2)).toBe(39);
+  });
+
+  it('continues auto-loading through a within-window duplicates page', async () => {
+    const shared = receipt(20);
+    const newest = [receipt(100), receipt(90)];
+
+    fanoutMock
+      // Batch 1: primary newest; supplemental contributes shared@20
+      .mockResolvedValueOnce(page(
+        source('fulfilled', newest),
+        source('fulfilled', [shared], EXTRA_RELAY),
+      ))
+      // Batch 2: primary returns only the already-cached shared@20 —
+      // validReceipts nonempty but zero new. Must keep paginating.
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [shared]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      // Batch 3: primary delivers older data below the dupe
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [receipt(10)]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ))
+      .mockResolvedValue(page(source('fulfilled', []), source('fulfilled', [], EXTRA_RELAY)));
+
+    const { result } = renderHook(() => useZapAnalytics('all', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(6);
+
+    // 4 unique receipts reached — the dupe page did not stall pagination
+    expect(result.current.loadingState.totalFetched).toBe(4);
+  });
+});
