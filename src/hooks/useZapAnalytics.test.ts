@@ -456,4 +456,31 @@ describe('useZapAnalytics cursor edge cases (review findings)', () => {
     expect(callUntil(6)).toBe(78);
     expect(result.current.loadingState.totalFetched).toBe(2);
   });
+
+  it('includes primary receipts when an until-violating primary recovers on the next batch', async () => {
+    // The review scenario: batch 1 returns only a future event, a full
+    // supplemental page continues the chain, and the primary recovers on
+    // batch 2 with an in-range receipt — the window was held (no merged
+    // cursor yet), so now-1500 is fetched, not skipped.
+    const now = Math.floor(Date.now() / 1000);
+    const recovered = receipt(now - 1500);
+    const page1 = [...Array.from({ length: 99 }, (_, i) => receipt(now - 1000 - i)), receipt(now - 2000)];
+
+    fanoutMock
+      .mockResolvedValueOnce(page(
+        source('fulfilled', [receipt(now + 100)]),
+        source('fulfilled', page1, EXTRA_RELAY),
+      ))
+      .mockResolvedValue(page(
+        source('fulfilled', [recovered]),
+        source('fulfilled', [], EXTRA_RELAY),
+      ));
+
+    const { result } = renderHook(() => useZapAnalytics('7d', undefined, PUBKEY), { wrapper });
+
+    await drainBatches(3);
+
+    expect(result.current.loadingState.totalFetched).toBe(101);
+    expect(callUntil(3)).toBe(now - 1501);
+  });
 });
