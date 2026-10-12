@@ -35,6 +35,24 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
       return
     }
 
+    // DayPicker v10 auto-completes the first range click with to = from.
+    // Treat a same-day result as a pending start unless a pending start
+    // already exists (a deliberate one-day range selected by re-clicking
+    // the start day).
+    const isPendingStart = Boolean(tempRange?.from && !tempRange.to)
+    const sameDay = Boolean(
+      range.from && range.to &&
+      range.from.getTime() === range.to.getTime()
+    )
+
+    if (range.from && (!range.to || (sameDay && !isPendingStart))) {
+      // Start date selected (or v10 first-click auto-complete) - store
+      // temporarily and keep the picker open
+      setTempRange({ from: range.from, to: undefined })
+      // Don't call onChange yet - wait for complete range
+      return
+    }
+
     // If we have both from and to dates
     if (range.from && range.to) {
       // Validate that the range is not more than 90 days
