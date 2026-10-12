@@ -76,7 +76,7 @@
     "zod": "^3.25.71"
   },
   "overrides": {
-    "handlebars": ">=4.7.9",
+    "handlebars": ">=4.7.10",
     "flatted": ">=3.4.2",
     "minimatch@<9": "3.1.4",
     "linkify-it": "5.0.2",
@@ -96,7 +96,7 @@
   },
   "pnpm": {
     "overrides": {
-      "handlebars": ">=4.7.9",
+      "handlebars": ">=4.7.10",
       "flatted": ">=3.4.2",
       "minimatch@<9": "3.1.4",
       "linkify-it": "5.0.2",
