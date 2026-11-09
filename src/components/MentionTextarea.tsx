@@ -459,7 +459,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
           >
             {import.meta.env.DEV && (
               <div className="px-2 py-1 text-[9px] font-mono text-muted-foreground border-b">
-                dbg pk={followsDbg.pubkey ?? '?'} contact={String(followsDbg.contact)} f={followsDbg.follows ?? '-'} p={followsDbg.profiles ?? '-'} r={followedProfiles ? followedProfiles.length : followsLoading ? '…' : followsErr ? 'ERR' : 'none'}
+                dbg pk={followsDbg.pubkey ?? '?'} via={followsDbg.contactRelay ?? '-'} f={followsDbg.follows ?? '-'} p={followsDbg.profiles ?? '-'} | {followsDbg.batch ?? '-'}
               </div>
             )}
             {filtered.length === 0 ? (

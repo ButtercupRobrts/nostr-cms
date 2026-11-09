@@ -38,7 +38,14 @@ const SOCIAL_RELAYS = [
  * across the same set, deduped newest-first. Cached for 5 minutes.
  */
 /** Dev-only: last-fetch debug info, surfaced in MentionTextarea's dbg line. */
-export const followsDbg: { pubkey?: string; contact?: boolean; follows?: number; profiles?: number } = {};
+export const followsDbg: {
+  pubkey?: string;
+  contact?: boolean;
+  follows?: number;
+  profiles?: number;
+  contactRelay?: string;
+  batch?: string;
+} = {};
 
 export function useFollowedProfiles() {
   const { nostr } = useNostr();
@@ -73,6 +80,7 @@ export function useFollowedProfiles() {
           (!contactEvent || r.value.ev[0].created_at > contactEvent.created_at)) {
           contactEvent = r.value.ev[0];
           contactRelay = r.value.url;
+          followsDbg.contactRelay = r.value.url.replace('wss://', '');
         }
       }
       followsDbg.contact = !!contactEvent;
@@ -100,19 +108,32 @@ export function useFollowedProfiles() {
         new Set([contactRelay, ...relays].filter((r): r is string => !!r)),
       ).slice(0, 3);
       const profiles: NostrEvent[] = [];
+      // One query() per relay with all chunk filters in a single REQ —
+      // nostr.relay() opens a fresh websocket per call, and relays
+      // (Primal included) drop rapid consecutive connection opens.
       const profileSettled = await Promise.allSettled(
-        chunks.flatMap((chunk) =>
-          batchRelays.map((url) =>
-            nostr.relay(url).query(
-              [{ kinds: [0], authors: chunk, limit: chunk.length }],
-              { signal: abort },
-            ),
+        batchRelays.map((url) =>
+          nostr.relay(url).query(
+            chunks.map((chunk) => ({
+              kinds: [0],
+              authors: chunk,
+              limit: chunk.length,
+            })),
+            { signal: abort },
           ),
         ),
       );
-      for (const r of profileSettled) {
-        if (r.status === 'fulfilled') profiles.push(...r.value);
-      }
+      const outcomes: string[] = [];
+      profileSettled.forEach((r, i) => {
+        const url = batchRelays[i % batchRelays.length].replace('wss://', '').split('.')[0];
+        if (r.status === 'fulfilled') {
+          outcomes.push(`${url}:${r.value.length}`);
+          profiles.push(...r.value);
+        } else {
+          outcomes.push(`${url}:ERR`);
+        }
+      });
+      followsDbg.batch = outcomes.join(' ');
 
       // Dedupe by pubkey — newest kind-0 wins.
       const byPubkey = new Map<string, NostrEvent>();
