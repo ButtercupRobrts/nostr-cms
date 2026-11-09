@@ -59,30 +59,36 @@ export function useFollowedProfiles() {
       if (!user?.pubkey) return [];
       followsDbg.pubkey = user.pubkey.slice(0, 8);
 
-      const abort = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
       const relays = Array.from(new Set([...nip65ReadRelays, ...SOCIAL_RELAYS]));
 
-      // Find the newest kind-3 across relays — parallel so a dead relay
-      // can't stall the probe sequence. Record the relay that served it;
-      // it's proven-reachable and leads the profile batch below.
+      // Probe phase: take the FIRST kind-3 any relay returns rather than
+      // allSettled — stragglers would otherwise hold the phase open until
+      // the shared abort kills everything, including the batch phase.
+      const probeAbort = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(FETCH_TIMEOUT_MS / 3),
+      ]);
       let contactEvent: NostrEvent | undefined;
       let contactRelay: string | undefined;
-      const settled = await Promise.allSettled(
-        relays.map((url) =>
+      await new Promise<void>((resolve) => {
+        let settled = 0;
+        for (const url of relays) {
           nostr.relay(url).query(
             [{ kinds: [3], authors: [user.pubkey], limit: 1 }],
-            { signal: abort },
-          ).then((ev) => ({ ev, url })),
-        ),
-      );
-      for (const r of settled) {
-        if (r.status === 'fulfilled' && r.value.ev[0] &&
-          (!contactEvent || r.value.ev[0].created_at > contactEvent.created_at)) {
-          contactEvent = r.value.ev[0];
-          contactRelay = r.value.url;
-          followsDbg.contactRelay = r.value.url.replace('wss://', '');
+            { signal: probeAbort },
+          ).then((ev) => {
+            if (ev[0] && !contactEvent) {
+              contactEvent = ev[0];
+              contactRelay = url;
+              followsDbg.contactRelay = url.replace('wss://', '');
+              resolve();
+            }
+          }).catch(() => {}).finally(() => {
+            if (++settled === relays.length) resolve();
+          });
         }
-      }
+        setTimeout(resolve, FETCH_TIMEOUT_MS / 3);
+      });
       followsDbg.contact = !!contactEvent;
       if (!contactEvent) return [];
 
@@ -111,6 +117,12 @@ export function useFollowedProfiles() {
       // One query() per relay with all chunk filters in a single REQ —
       // nostr.relay() opens a fresh websocket per call, and relays
       // (Primal included) drop rapid consecutive connection opens.
+      // Independent budget: the probe phase already consumed part of the
+      // overall window.
+      const batchAbort = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      ]);
       const profileSettled = await Promise.allSettled(
         batchRelays.map((url) =>
           nostr.relay(url).query(
@@ -119,7 +131,7 @@ export function useFollowedProfiles() {
               authors: chunk,
               limit: chunk.length,
             })),
-            { signal: abort },
+            { signal: batchAbort },
           ),
         ),
       );
