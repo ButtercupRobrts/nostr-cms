@@ -61,9 +61,10 @@ export function useFollowedProfiles() {
 
       const relays = Array.from(new Set([...nip65ReadRelays, ...SOCIAL_RELAYS]));
 
-      // Probe phase: take the FIRST kind-3 any relay returns rather than
-      // allSettled — stragglers would otherwise hold the phase open until
-      // the shared abort kills everything, including the batch phase.
+      // Probe phase: collect kind-3 responses for a bounded window, then
+      // take the NEWEST — relays can hold stale copies of the replaceable
+      // contact list, so first-hit isn't enough (a stale kind-3 has been
+      // observed in the wild: 8 follows vs the real 1765).
       const probeAbort = AbortSignal.any([
         signal,
         AbortSignal.timeout(FETCH_TIMEOUT_MS / 3),
@@ -72,22 +73,28 @@ export function useFollowedProfiles() {
       let contactRelay: string | undefined;
       await new Promise<void>((resolve) => {
         let settled = 0;
+        let done = false;
+        const finish = () => {
+          if (!done) { done = true; resolve(); }
+        };
         for (const url of relays) {
           nostr.relay(url).query(
             [{ kinds: [3], authors: [user.pubkey], limit: 1 }],
             { signal: probeAbort },
           ).then((ev) => {
-            if (ev[0] && !contactEvent) {
+            if (ev[0] && (!contactEvent || ev[0].created_at > contactEvent.created_at)) {
               contactEvent = ev[0];
               contactRelay = url;
               followsDbg.contactRelay = url.replace('wss://', '');
-              resolve();
+              // Grace period after the first hit lets slower relays
+              // still beat a stale early answer on created_at.
+              setTimeout(finish, 1500);
             }
           }).catch(() => {}).finally(() => {
-            if (++settled === relays.length) resolve();
+            if (++settled === relays.length) finish();
           });
         }
-        setTimeout(resolve, FETCH_TIMEOUT_MS / 3);
+        setTimeout(finish, FETCH_TIMEOUT_MS / 3);
       });
       followsDbg.contact = !!contactEvent;
       if (!contactEvent) return [];
