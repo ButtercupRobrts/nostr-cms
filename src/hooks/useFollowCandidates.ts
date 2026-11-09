@@ -7,9 +7,9 @@ import { useAppContext } from '@/hooks/useAppContext';
 import { getNip65ReadRelays } from '@/lib/queryRelays';
 import type { MentionSearchResult } from '@/hooks/useMentionSearch';
 
-const PROFILE_CHUNK = 100;
-const MAX_FOLLOWS = 1500;
-const FETCH_TIMEOUT_MS = 8000;
+const PROFILE_CHUNK = 400;
+const MAX_FOLLOWS = 1600;
+const FETCH_TIMEOUT_MS = 12_000;
 
 /**
  * Relays likely to hold social-graph data. The default pool only reads the
@@ -76,23 +76,27 @@ export function useFollowedProfiles() {
         .slice(0, MAX_FOLLOWS);
       if (followPubkeys.length === 0) return [];
 
-      // Batch-fetch kind-0 profiles across the relay set in parallel —
-      // relays return disjoint subsets; merge dedupes by pubkey.
-      const profiles: NostrEvent[] = [];
+      // Batch-fetch kind-0 profiles — every chunk × every relay in
+      // parallel; relays return disjoint subsets and merge dedupes by
+      // pubkey. Sequential chunking risked the fetch timeout firing
+      // before later chunks were ever requested.
+      const chunks: string[][] = [];
       for (let i = 0; i < followPubkeys.length; i += PROFILE_CHUNK) {
-        if (abort.aborted) break;
-        const chunk = followPubkeys.slice(i, i + PROFILE_CHUNK);
-        const settled = await Promise.allSettled(
+        chunks.push(followPubkeys.slice(i, i + PROFILE_CHUNK));
+      }
+      const profiles: NostrEvent[] = [];
+      const profileSettled = await Promise.allSettled(
+        chunks.flatMap((chunk) =>
           relays.map((url) =>
             nostr.relay(url).query(
               [{ kinds: [0], authors: chunk, limit: chunk.length }],
               { signal: abort },
             ),
           ),
-        );
-        for (const r of settled) {
-          if (r.status === 'fulfilled') profiles.push(...r.value);
-        }
+        ),
+      );
+      for (const r of profileSettled) {
+        if (r.status === 'fulfilled') profiles.push(...r.value);
       }
 
       // Dedupe by pubkey — newest kind-0 wins.
