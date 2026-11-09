@@ -215,7 +215,10 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     if (!q) return candidates.slice(0, 20);
 
     const local = candidates.filter(match);
-    const external = externalCandidates.filter(match);
+    // External results are already relay-scored; re-filtering them by a
+    // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
+    // words, so a prefix query like "gzu" may only surface near-matches).
+    const external = externalCandidates.slice(0, 15);
     // Local (whitelisted) results first, then external.
     return [...local, ...external];
   }, [candidates, externalCandidates, deferredQuery, mention.active]);
@@ -424,7 +427,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                 {isSearching
                   ? 'Searching relays…'
                   : deferredQuery.trim()
-                    ? 'No matching users'
+                    ? 'No matching users — try a full address (name@domain.com)'
                     : 'Type a name to search…'}
               </div>
             ) : (
