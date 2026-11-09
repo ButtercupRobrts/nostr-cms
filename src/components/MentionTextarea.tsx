@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNostrJsonUsers, dedupeUsersByPubkey } from '@/hooks/useNostrJsonUsers';
 import { useMentionSearch } from '@/hooks/useMentionSearch';
-import { useFollowedProfiles } from '@/hooks/useFollowCandidates';
+import { useFollowedProfiles, followsDbg } from '@/hooks/useFollowCandidates';
 import { getCaretCoordinates } from '@/lib/caretCoords';
 
 /**
@@ -209,7 +209,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     return external;
   }, [searchResults, candidates]);
 
-  const { data: followedProfiles } = useFollowedProfiles();
+  const { data: followedProfiles, isFetching: followsLoading, isError: followsErr } = useFollowedProfiles();
 
   /** Followed candidates matching the query — ranked before externals. */
   const followCandidates = useMemo<MentionCandidate[]>(() => {
@@ -457,6 +457,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
             }}
             role="listbox"
           >
+            {import.meta.env.DEV && (
+              <div className="px-2 py-1 text-[9px] font-mono text-muted-foreground border-b">
+                dbg pk={followsDbg.pubkey ?? '?'} contact={String(followsDbg.contact)} f={followsDbg.follows ?? '-'} p={followsDbg.profiles ?? '-'} r={followedProfiles ? followedProfiles.length : followsLoading ? '…' : followsErr ? 'ERR' : 'none'}
+              </div>
+            )}
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
                 {isSearching
