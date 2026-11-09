@@ -37,16 +37,6 @@ const SOCIAL_RELAYS = [
  * location), then SOCIAL_RELAYS as fallback. Profiles are batch-fetched
  * across the same set, deduped newest-first. Cached for 5 minutes.
  */
-/** Dev-only: last-fetch debug info, surfaced in MentionTextarea's dbg line. */
-export const followsDbg: {
-  pubkey?: string;
-  contact?: boolean;
-  follows?: number;
-  profiles?: number;
-  contactRelay?: string;
-  batch?: string;
-} = {};
-
 export function useFollowedProfiles() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
@@ -57,7 +47,6 @@ export function useFollowedProfiles() {
     queryKey: ['mention-followed-profiles', user?.pubkey, nip65ReadRelays],
     queryFn: async ({ signal }): Promise<MentionSearchResult[]> => {
       if (!user?.pubkey) return [];
-      followsDbg.pubkey = user.pubkey.slice(0, 8);
 
       const relays = Array.from(new Set([...nip65ReadRelays, ...SOCIAL_RELAYS]));
 
@@ -85,7 +74,6 @@ export function useFollowedProfiles() {
             if (ev[0] && (!contactEvent || ev[0].created_at > contactEvent.created_at)) {
               contactEvent = ev[0];
               contactRelay = url;
-              followsDbg.contactRelay = url.replace('wss://', '');
               // Grace period after the first hit lets slower relays
               // still beat a stale early answer on created_at.
               setTimeout(finish, 1500);
@@ -96,14 +84,12 @@ export function useFollowedProfiles() {
         }
         setTimeout(finish, FETCH_TIMEOUT_MS / 3);
       });
-      followsDbg.contact = !!contactEvent;
       if (!contactEvent) return [];
 
       const followPubkeys = contactEvent.tags
         .filter((t) => t[0] === 'p' && t[1])
         .map((t) => t[1])
         .slice(0, MAX_FOLLOWS);
-      followsDbg.follows = followPubkeys.length;
       if (followPubkeys.length === 0) return [];
 
       // Batch-fetch kind-0 profiles — every chunk × every relay in
@@ -142,17 +128,9 @@ export function useFollowedProfiles() {
           ),
         ),
       );
-      const outcomes: string[] = [];
-      profileSettled.forEach((r, i) => {
-        const url = batchRelays[i % batchRelays.length].replace('wss://', '').split('.')[0];
-        if (r.status === 'fulfilled') {
-          outcomes.push(`${url}:${r.value.length}`);
-          profiles.push(...r.value);
-        } else {
-          outcomes.push(`${url}:ERR`);
-        }
-      });
-      followsDbg.batch = outcomes.join(' ');
+      for (const r of profileSettled) {
+        if (r.status === 'fulfilled') profiles.push(...r.value);
+      }
 
       // Dedupe by pubkey — newest kind-0 wins.
       const byPubkey = new Map<string, NostrEvent>();
@@ -179,7 +157,6 @@ export function useFollowedProfiles() {
           // skip unparseable metadata
         }
       }
-      followsDbg.profiles = results.length;
       return results;
     },
     enabled: !!user?.pubkey,

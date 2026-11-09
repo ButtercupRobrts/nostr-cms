@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNostrJsonUsers, dedupeUsersByPubkey } from '@/hooks/useNostrJsonUsers';
 import { useMentionSearch } from '@/hooks/useMentionSearch';
-import { useFollowedProfiles, followsDbg } from '@/hooks/useFollowCandidates';
+import { useFollowedProfiles } from '@/hooks/useFollowCandidates';
 import { getCaretCoordinates } from '@/lib/caretCoords';
 
 /**
@@ -209,7 +209,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     return external;
   }, [searchResults, candidates]);
 
-  const { data: followedProfiles, isFetching: followsLoading, isError: followsErr } = useFollowedProfiles();
+  const { data: followedProfiles } = useFollowedProfiles();
 
   /** Followed candidates matching the query — ranked before externals. */
   const followCandidates = useMemo<MentionCandidate[]>(() => {
@@ -252,7 +252,10 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     // External results are already relay-scored; re-filtering them by a
     // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
     // words, so a prefix query like "gzu" may only surface near-matches).
-    const external = externalCandidates.slice(0, 15);
+    const followKeys = new Set(followCandidates.map((c) => c.pubkey));
+    const external = externalCandidates
+      .filter((c) => !followKeys.has(c.pubkey))
+      .slice(0, 15);
     // Local (whitelisted) first, then people the viewer follows (the
     // trust signal against similar-name impersonators), then externals.
     return [...local, ...followCandidates, ...external];
@@ -457,11 +460,6 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
             }}
             role="listbox"
           >
-            {import.meta.env.DEV && (
-              <div className="px-2 py-1 text-[9px] font-mono text-muted-foreground border-b">
-                dbg pk={followsDbg.pubkey ?? '?'} via={followsDbg.contactRelay ?? '-'} f={followsDbg.follows ?? '-'} p={followsDbg.profiles ?? '-'} | {followsDbg.batch ?? '-'}
-              </div>
-            )}
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
                 {isSearching
