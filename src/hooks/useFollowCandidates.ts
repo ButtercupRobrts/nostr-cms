@@ -3,10 +3,29 @@ import { useNostr } from '@nostrify/react';
 import { nip19 } from 'nostr-tools';
 import { NSchema as n, type NostrEvent } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useAppContext } from '@/hooks/useAppContext';
+import { getNip65ReadRelays } from '@/lib/queryRelays';
 import type { MentionSearchResult } from '@/hooks/useMentionSearch';
 
 const PROFILE_CHUNK = 100;
 const MAX_FOLLOWS = 1500;
+const FETCH_TIMEOUT_MS = 8000;
+
+/**
+ * Relays likely to hold social-graph data. The default pool only reads the
+ * site relay — a team relay that doesn't store kind-3 contact lists or
+ * arbitrary members' kind-0s — so the follows tier must query profile
+ * relays explicitly, the same way useMentionSearch does.
+ *
+ * `purplepag.es` and `nostr.wine` index profiles; `relay.damus.io` and
+ * `relay.nostr.band` are large general stores that keep contact lists.
+ */
+const SOCIAL_RELAYS = [
+  'wss://purplepag.es',
+  'wss://relay.damus.io',
+  'wss://nostr.wine',
+  'wss://relay.nostr.band',
+];
 
 /**
  * Profiles of people the current user follows (NIP-02 kind-3 contact list),
@@ -14,22 +33,41 @@ const MAX_FOLLOWS = 1500;
  * are the strongest available trust signal — a scammer impersonating a
  * followed account won't appear here.
  *
- * The kind-3 event and the kind-0 profile fetches are cached for 5 minutes;
- * contact lists change rarely and profile data is largely static.
+ * The kind-3 is fetched from the user's NIP-65 read relays first (canonical
+ * location), then SOCIAL_RELAYS as fallback. Profiles are batch-fetched
+ * across the same set, deduped newest-first. Cached for 5 minutes.
  */
 export function useFollowedProfiles() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { config } = useAppContext();
+  const nip65ReadRelays = getNip65ReadRelays(config.relayMetadata);
 
   return useQuery({
-    queryKey: ['mention-followed-profiles', user?.pubkey],
+    queryKey: ['mention-followed-profiles', user?.pubkey, nip65ReadRelays],
     queryFn: async ({ signal }): Promise<MentionSearchResult[]> => {
       if (!user?.pubkey) return [];
 
-      const [contactEvent] = await nostr.query(
-        [{ kinds: [3], authors: [user.pubkey], limit: 1 }],
-        { signal },
+      const abort = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
+      const relays = Array.from(new Set([...nip65ReadRelays, ...SOCIAL_RELAYS]));
+
+      // Find the newest kind-3 across relays — parallel so a dead relay
+      // can't stall the probe sequence.
+      let contactEvent: NostrEvent | undefined;
+      const settled = await Promise.allSettled(
+        relays.map((url) =>
+          nostr.relay(url).query(
+            [{ kinds: [3], authors: [user.pubkey], limit: 1 }],
+            { signal: abort },
+          ),
+        ),
       );
+      for (const r of settled) {
+        if (r.status === 'fulfilled' && r.value[0] &&
+          (!contactEvent || r.value[0].created_at > contactEvent.created_at)) {
+          contactEvent = r.value[0];
+        }
+      }
       if (!contactEvent) return [];
 
       const followPubkeys = contactEvent.tags
@@ -38,22 +76,22 @@ export function useFollowedProfiles() {
         .slice(0, MAX_FOLLOWS);
       if (followPubkeys.length === 0) return [];
 
-      // Batch-fetch kind-0 profiles for the follows — relay `authors`
-      // filters accept long lists; chunk to stay polite.
+      // Batch-fetch kind-0 profiles across the relay set in parallel —
+      // relays return disjoint subsets; merge dedupes by pubkey.
       const profiles: NostrEvent[] = [];
       for (let i = 0; i < followPubkeys.length; i += PROFILE_CHUNK) {
-        if (signal.aborted) break;
+        if (abort.aborted) break;
         const chunk = followPubkeys.slice(i, i + PROFILE_CHUNK);
-        try {
-          profiles.push(
-            ...(await nostr.query(
+        const settled = await Promise.allSettled(
+          relays.map((url) =>
+            nostr.relay(url).query(
               [{ kinds: [0], authors: chunk, limit: chunk.length }],
-              { signal },
-            )),
-          );
-        } catch {
-          // partial results are fine — a relay that fails one chunk may
-          // still serve the next
+              { signal: abort },
+            ),
+          ),
+        );
+        for (const r of settled) {
+          if (r.status === 'fulfilled') profiles.push(...r.value);
         }
       }
 
