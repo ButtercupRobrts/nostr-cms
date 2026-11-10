@@ -115,9 +115,13 @@ export function CommunityHeatmap({ data, members, isLoading }: CommunityHeatmapP
   const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
   const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
 
-  // Build weeks (columns) starting from the Sunday before minDate
+  // Build weeks (columns) starting from the Sunday before minDate.
+  // All calendar math runs in UTC: period.date is a UTC midnight and cell
+  // lookup keys come from toISOString() — local-time setDate would shift a
+  // cell's UTC day across a DST transition, duplicating one date and
+  // dropping the last one.
   const startDate = new Date(minDate);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
+  startDate.setUTCDate(startDate.getUTCDate() - startDate.getUTCDay());
 
   const weeks: Date[][] = [];
   const current = new Date(startDate);
@@ -125,7 +129,7 @@ export function CommunityHeatmap({ data, members, isLoading }: CommunityHeatmapP
     const week: Date[] = [];
     for (let i = 0; i < 7; i++) {
       week.push(new Date(current));
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
     weeks.push(week);
   }
