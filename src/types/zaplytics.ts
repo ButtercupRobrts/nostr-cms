@@ -22,6 +22,9 @@ export interface ParsedZap {
     name?: string;
     nip05?: string;
     picture?: string;
+    /** True when the receipt carries no zap request — pubkey is then the
+     *  LNURL server's key, not the actual sender's. */
+    anonymous?: boolean;
   };
   amount: number; // sats
   comment?: string;

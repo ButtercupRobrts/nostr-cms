@@ -72,6 +72,7 @@ export function parseZapReceipt(zapEvent: ZapReceipt): ParsedZap | null {
       zapRequest,
       zapper: {
         pubkey: zapRequest?.pubkey || zapEvent.pubkey,
+        anonymous: !zapRequest,
       },
     };
 
@@ -405,14 +406,17 @@ export function getTopZappers(zaps: ParsedZap[]): ZapperStats[] {
   const grouped = new Map<string, ZapperStats>();
 
   zaps.forEach(zap => {
-    const existing = grouped.get(zap.zapper.pubkey);
+    // Anonymous zaps (no zap request in the receipt) would otherwise credit
+    // the LNURL server's key — group them under one labeled bucket instead.
+    const key = zap.zapper.anonymous ? '__anonymous__' : zap.zapper.pubkey;
+    const existing = grouped.get(key);
     if (existing) {
       existing.totalSats += zap.amount;
       existing.zapCount += 1;
     } else {
-      grouped.set(zap.zapper.pubkey, {
-        pubkey: zap.zapper.pubkey,
-        name: zap.zapper.name,
+      grouped.set(key, {
+        pubkey: key,
+        name: zap.zapper.anonymous ? 'Anonymous' : zap.zapper.name,
         nip05: zap.zapper.nip05,
         picture: zap.zapper.picture,
         totalSats: zap.amount,
