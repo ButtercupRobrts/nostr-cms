@@ -333,16 +333,21 @@ function snapToPeriodStart(date: Date, groupBy: 'hour' | 'day' | 'week' | 'month
 }
 
 /**
+ * True when zappedEvent was actually fetched — empty content + epoch date
+ * means we only have the event ID from the e tag (unfetched stub).
+ */
+function isFetchedEvent(zap: ParsedZap): boolean {
+  return !zap.zappedEvent || !!zap.zappedEvent.content || zap.zappedEvent.created_at !== 0;
+}
+
+/**
  * Group zaps by content/event
  */
 export function groupZapsByContent(zaps: ParsedZap[]): EarningsByContent[] {
   const grouped = new Map<string, EarningsByContent>();
 
   zaps.forEach(zap => {
-    if (!zap.zappedEvent) return;
-    // Skip entries where the zapped event wasn't actually fetched
-    // (empty content + epoch date means we only have the event ID from the e tag)
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
 
     const existing = grouped.get(zap.zappedEvent.id);
     if (existing) {
@@ -373,12 +378,7 @@ export function groupZapsByKind(zaps: ParsedZap[]): EarningsByKind[] {
   let totalSats = 0;
 
   zaps.forEach(zap => {
-    if (!zap.zappedEvent) return;
-    // Skip zaps whose event was never fetched — they're e-tag stubs that
-    // default to kind 1 and would inflate that bucket (same guard as
-    // groupZapsByContent). Counting only attributed zaps also keeps the
-    // percentages summing to 100.
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
 
     totalSats += zap.amount;
     const kind = zap.zappedEvent.kind;
@@ -622,7 +622,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
 
   const loyaltyAnalysis: import('@/types/zaplytics').ZapperLoyalty[] = [];
   let newZappers = 0;
-  let returningZappers = 0;
+  let repeatZappers = 0;
   let regularSupporters = 0;
 
   zapperData.forEach(zapperInfo => {
@@ -646,7 +646,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
       category = 'one-time';
       newZappers++;
     } else {
-      returningZappers++;
+      repeatZappers++;
       
       if (zapperInfo.totalSats >= 10000) { // 10k+ sats = whale
         category = 'whale';
@@ -686,7 +686,7 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
 
   return {
     newZappers,
-    returningZappers,
+    repeatZappers,
     regularSupporters,
     averageLifetimeValue,
     topLoyalZappers,
@@ -710,9 +710,8 @@ export function analyzeContentPerformance(zaps: ParsedZap[]): import('@/types/za
 
   // Group zaps by content
   zaps.forEach(zap => {
-    if (!zap.zappedEvent) return;
-    if (!zap.zappedEvent.content && zap.zappedEvent.created_at === 0) return;
-    
+    if (!zap.zappedEvent || !isFetchedEvent(zap)) return;
+
     const existing = contentData.get(zap.zappedEvent.id);
     if (existing) {
       existing.zaps.push(zap);
