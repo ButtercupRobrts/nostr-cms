@@ -108,9 +108,18 @@ export function useFollowedProfiles() {
       // The relay that served the kind-3 is proven reachable — lead with
       // it and cap the fanout so a dead relay can't starve the batch
       // inside the fetch budget.
+      // Batch relay order matters: the proven contact relay first, then
+      // social profile indexes (which hold *other* users' profiles), and
+      // NIP-65 read relays last. Write-only outbox relays may serve the
+      // kind-3 but can't fill profile slots for arbitrary follows.
+      const nip65Read = getNip65ReadRelays(config.relayMetadata);
       const batchRelays = Array.from(
-        new Set([contactRelay, ...relays].filter((r): r is string => !!r)),
-      ).slice(0, 3);
+        new Set(
+          [contactRelay, ...SOCIAL_RELAYS, ...nip65Read].filter(
+            (r): r is string => !!r,
+          ),
+        ),
+      ).slice(0, 4);
       const profiles: NostrEvent[] = [];
       // One query() per relay with all chunk filters in a single REQ —
       // nostr.relay() opens a fresh websocket per call, and relays

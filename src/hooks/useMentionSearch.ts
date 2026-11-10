@@ -319,12 +319,17 @@ export function useMentionSearch(query: string) {
         }
       }
 
-      // Add NIP-05 result if we got one and it's not already in the results.
-      if (nip05Result && !byPubkey.has(nip05Result.pubkey)) {
-        byPubkey.set(nip05Result.pubkey, {
-          ...nip05Result,
-          _ts: 0,
-        });
+      // Merge the NIP-05 result: if a relay already returned the resolved
+      // pubkey, annotate that entry with direct provenance + the verified
+      // identifier rather than dropping the lookup entirely.
+      if (nip05Result) {
+        const existing = byPubkey.get(nip05Result.pubkey);
+        if (existing) {
+          existing.direct = true;
+          if (!existing.nip05) existing.nip05 = nip05Result.nip05;
+        } else {
+          byPubkey.set(nip05Result.pubkey, { ...nip05Result, _ts: 0 });
+        }
       }
 
       // Add the bech32 (npub/nprofile) result. This is an explicit identity
