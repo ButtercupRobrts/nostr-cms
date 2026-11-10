@@ -160,7 +160,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   /** Highlighted index for keyboard nav within the filtered list. */
   const [activeIdx, setActiveIdx] = useState(0);
 
-  const { data: usersData } = useNostrJsonUsers();
+  const { data: usersData, isFetching: usersLoading } = useNostrJsonUsers();
 
   /** Stable candidate pool: nostr.json users + recently-mentioned, deduped. */
   const candidates = useMemo<MentionCandidate[]>(() => {
@@ -196,23 +196,6 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
 
   const { data: searchResults, isFetching: isSearching } = useMentionSearch(debouncedSearch);
 
-  // True while typed text hasn't reached the search yet — either still in
-  // the 250ms debounce window or a fetch is in flight. Gates "No matching
-  // users" so it can't flash between keystrokes/requests.
-  const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
-
-  // Grace period before showing "No matching users": an intermediate prefix
-  // ('gzu') can settle with zero results while the user is still typing
-  // toward 'gzuus' — show the verdict only once the query has been stable
-  // and fully searched for a beat.
-  const [showNoMatch, setShowNoMatch] = useState(false);
-  useEffect(() => {
-    setShowNoMatch(false);
-    if (searchPending || !deferredQuery.trim()) return;
-    const id = setTimeout(() => setShowNoMatch(true), 400);
-    return () => clearTimeout(id);
-  }, [searchPending, deferredQuery]);
-
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
@@ -233,7 +216,29 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     return external;
   }, [searchResults]);
 
-  const { data: followedProfiles } = useFollowedProfiles();
+  const { data: followedProfiles, isFetching: followsLoading } = useFollowedProfiles();
+
+  // True while typed text hasn't reached the search yet — either still in
+  // the 250ms debounce window or a fetch is in flight. Gates "No matching
+  // users" so it can't flash between keystrokes/requests.
+  const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
+
+  // The whitelist (nostr.json) and followed-profile pools load async on
+  // their own — "No matching users" can't be trusted until they've settled
+  // too, or a late-arriving local match pops in right after the verdict.
+  const poolsPending = usersLoading || followsLoading;
+
+  // Grace period before showing "No matching users": an intermediate prefix
+  // ('gzu') can settle with zero results while the user is still typing
+  // toward 'gzuus' — show the verdict only once the query has been stable
+  // and fully searched for a beat.
+  const [showNoMatch, setShowNoMatch] = useState(false);
+  useEffect(() => {
+    setShowNoMatch(false);
+    if (searchPending || poolsPending || !deferredQuery.trim()) return;
+    const id = setTimeout(() => setShowNoMatch(true), 400);
+    return () => clearTimeout(id);
+  }, [searchPending, poolsPending, deferredQuery]);
 
   /** Followed candidates matching the query — ranked before externals. */
   const followCandidates = useMemo<MentionCandidate[]>(() => {
