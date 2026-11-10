@@ -4,7 +4,7 @@ import { nip19 } from 'nostr-tools';
 import { NSchema as n, type NostrEvent } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useAppContext } from '@/hooks/useAppContext';
-import { getNip65ReadRelays } from '@/lib/queryRelays';
+import { getNip65ReadRelays, getNip65WriteRelays } from '@/lib/queryRelays';
 import type { MentionSearchResult } from '@/hooks/useMentionSearch';
 
 const PROFILE_CHUNK = 400;
@@ -41,14 +41,19 @@ export function useFollowedProfiles() {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
   const { config } = useAppContext();
-  const nip65ReadRelays = getNip65ReadRelays(config.relayMetadata);
+  // Read+write NIP-65 relays: the user's own kind-3 lives wherever they
+  // publish — write-only relays are valid sources for their own events.
+  const nip65Relays = Array.from(new Set([
+    ...getNip65ReadRelays(config.relayMetadata),
+    ...getNip65WriteRelays(config.relayMetadata),
+  ]));
 
   return useQuery({
-    queryKey: ['mention-followed-profiles', user?.pubkey, nip65ReadRelays],
+    queryKey: ['mention-followed-profiles', user?.pubkey, nip65Relays],
     queryFn: async ({ signal }): Promise<MentionSearchResult[]> => {
       if (!user?.pubkey) return [];
 
-      const relays = Array.from(new Set([...nip65ReadRelays, ...SOCIAL_RELAYS]));
+      const relays = Array.from(new Set([...nip65Relays, ...SOCIAL_RELAYS]));
 
       // Probe phase: collect kind-3 responses for a bounded window, then
       // take the NEWEST — relays can hold stale copies of the replaceable

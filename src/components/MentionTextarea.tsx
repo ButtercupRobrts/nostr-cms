@@ -35,10 +35,14 @@ interface MentionCandidate {
   picture?: string;
   /** NIP-05 identifier from search results or author metadata. */
   nip05?: string;
+  /** kind-0 `name` (kept separate from displayName for search). */
+  name?: string;
   /** True when the candidate came from relay search rather than nostr.json. */
   external?: boolean;
   /** True when the candidate is someone the current user follows (kind-3). */
   followed?: boolean;
+  /** True for directly resolved lookups (NIP-05 / bech32) — pinned ahead of the cap. */
+  direct?: boolean;
 }
 
 /**
@@ -195,19 +199,22 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
-    const seen = new Set(candidates.map((c) => c.pubkey));
+    // Deduped downstream in `filtered` against displayed candidates —
+    // filtering here against the full local pool can hide a recently
+    // selected fuzzy hit whose name doesn't contain the query.
     const external = searchResults
-      .filter((r) => !seen.has(r.pubkey))
       .map((r) => ({
         pubkey: r.pubkey,
         npub: r.npub,
         displayName: r.displayName || r.name,
+        name: r.name,
         picture: r.picture,
         nip05: r.nip05,
+        direct: r.direct,
         external: true,
       }));
     return external;
-  }, [searchResults, candidates]);
+  }, [searchResults]);
 
   const { data: followedProfiles } = useFollowedProfiles();
 
@@ -222,15 +229,17 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
         pubkey: r.pubkey,
         npub: r.npub,
         displayName: r.displayName || r.name,
+        name: r.name,
         picture: r.picture,
         nip05: r.nip05,
         followed: true,
       }))
       .filter((c) => {
         if (!q) return true;
-        const name = (c.displayName || '').toLowerCase();
+        const disp = (c.displayName || '').toLowerCase();
+        const name = (c.name || '').toLowerCase();
         const nip05 = (c.nip05 || '').toLowerCase();
-        return name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+        return disp.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
       })
       .slice(0, 10);
   }, [followedProfiles, candidates, deferredQuery]);
@@ -252,10 +261,14 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     // External results are already relay-scored; re-filtering them by a
     // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
     // words, so a prefix query like "gzu" may only surface near-matches).
-    const followKeys = new Set(followCandidates.map((c) => c.pubkey));
-    const external = externalCandidates
-      .filter((c) => !followKeys.has(c.pubkey))
-      .slice(0, 15);
+    const seen = new Set(
+      [...local, ...followCandidates].map((c) => c.pubkey),
+    );
+    const ext = externalCandidates.filter((c) => !seen.has(c.pubkey));
+    // Directly resolved lookups (NIP-05 / bech32) pin ahead of the cap —
+    // the user typed the full identity deliberately.
+    const direct = ext.filter((c) => c.direct);
+    const external = [...direct, ...ext.filter((c) => !c.direct)].slice(0, 15);
     // Local (whitelisted) first, then people the viewer follows (the
     // trust signal against similar-name impersonators), then externals.
     return [...local, ...followCandidates, ...external];

@@ -18,6 +18,8 @@ export interface MentionSearchResult {
   picture?: string;
   /** NIP-05 identifier from kind 0 metadata or NIP-05 lookup. */
   nip05?: string;
+  /** True for directly resolved lookups (NIP-05 / bech32) — pins ahead of fuzzy hits. */
+  direct?: boolean;
 }
 
 /**
@@ -112,6 +114,7 @@ export async function lookupBech32Entity(
         displayName: metadata.display_name,
         picture: metadata.picture,
         nip05: metadata.nip05,
+        direct: true,
       };
     } catch {
       // fall through to basic result
@@ -120,7 +123,7 @@ export async function lookupBech32Entity(
 
   // Valid npub but no profile found — still return the pubkey so the user
   // can confirm the bech32 decoded and insert it.
-  return { pubkey, npub };
+  return { pubkey, npub, direct: true };
 }
 
 /** Resolve a NIP-05 identifier and fetch the profile, returning a search result. */
@@ -165,6 +168,7 @@ async function lookupNip05(
           displayName: metadata.display_name,
           picture: metadata.picture,
           nip05: nip05id,
+          direct: true,
         };
       } catch {
         // fall through to basic result
@@ -172,7 +176,7 @@ async function lookupNip05(
     }
 
     // No profile found, but we still have the pubkey from NIP-05.
-    return { pubkey: pointer.pubkey, npub, nip05: nip05id };
+    return { pubkey: pointer.pubkey, npub, nip05: nip05id, direct: true };
   } catch {
     return null;
   }
