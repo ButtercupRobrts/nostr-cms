@@ -196,6 +196,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
 
   const { data: searchResults, isFetching: isSearching } = useMentionSearch(debouncedSearch);
 
+  // True while typed text hasn't reached the search yet — either still in
+  // the 250ms debounce window or a fetch is in flight. Gates "No matching
+  // users" so it can't flash between keystrokes/requests.
+  const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
+
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
@@ -252,7 +257,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
       const handle = (c.handle || '').toLowerCase();
       const name = (c.displayName || '').toLowerCase();
       const nip05 = (c.nip05 || '').toLowerCase();
-      return handle.includes(q) || name.includes(q) || nip05.includes(q);
+      return handle.includes(q) || name.includes(q) || (c.name || '').toLowerCase().includes(q) || nip05.includes(q);
     };
 
     if (!q) return candidates.slice(0, 20);
@@ -475,7 +480,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
           >
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
-                {isSearching
+                {searchPending
                   ? 'Searching relays…'
                   : deferredQuery.trim()
                     ? 'No matching users — try a full address (name@domain.com)'
@@ -504,7 +509,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                 </button>
               ))
             )}
-            {isSearching && filtered.length > 0 && (
+            {searchPending && filtered.length > 0 && (
               <div className="py-2 text-center text-xs text-muted-foreground">
                 Searching relays…
               </div>
