@@ -201,6 +201,18 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   // users" so it can't flash between keystrokes/requests.
   const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
 
+  // Grace period before showing "No matching users": an intermediate prefix
+  // ('gzu') can settle with zero results while the user is still typing
+  // toward 'gzuus' — show the verdict only once the query has been stable
+  // and fully searched for a beat.
+  const [showNoMatch, setShowNoMatch] = useState(false);
+  useEffect(() => {
+    setShowNoMatch(false);
+    if (searchPending || !deferredQuery.trim()) return;
+    const id = setTimeout(() => setShowNoMatch(true), 400);
+    return () => clearTimeout(id);
+  }, [searchPending, deferredQuery]);
+
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
@@ -480,11 +492,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
           >
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
-                {searchPending
-                  ? 'Searching relays…'
-                  : deferredQuery.trim()
+                {!deferredQuery.trim()
+                  ? 'Type a name to search…'
+                  : showNoMatch
                     ? 'No matching users — try a full address (name@domain.com)'
-                    : 'Type a name to search…'}
+                    : 'Searching relays…'}
               </div>
             ) : (
               filtered.map((c, i) => (
