@@ -108,3 +108,15 @@ export function getNip65ReadRelays(
 ): string[] {
   return relayMetadata?.relays?.filter((r) => r.read).map((r) => r.url).filter(url => !isBlockedRelay(url)) || [];
 }
+
+/**
+ * Get the list of NIP-65 write relay URLs from relay metadata config.
+ * Needed when discovering the current user's own replaceable events (e.g.
+ * kind-3 contact lists) — users publish them to write relays, which may
+ * not also be marked for reading.
+ */
+export function getNip65WriteRelays(
+  relayMetadata?: { relays: Array<{ url: string; read: boolean; write: boolean }> },
+): string[] {
+  return relayMetadata?.relays?.filter((r) => r.write).map((r) => r.url).filter(url => !isBlockedRelay(url)) || [];
+}

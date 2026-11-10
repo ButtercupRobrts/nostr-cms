@@ -142,3 +142,13 @@ describe('lookupBech32Entity', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('direct-lookup provenance', () => {
+  it('marks resolved npub results as direct so they pin ahead of the cap', async () => {
+    const npub = nip19.npubEncode(PUBKEY);
+    const nostr = fakeNostr({});
+    const result = await lookupBech32Entity(npub, nostr, new AbortController().signal);
+    expect(result).not.toBeNull();
+    expect(result!.direct).toBe(true);
+  });
+});

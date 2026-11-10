@@ -17,6 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNostrJsonUsers, dedupeUsersByPubkey } from '@/hooks/useNostrJsonUsers';
 import { useMentionSearch } from '@/hooks/useMentionSearch';
+import { useFollowedProfiles } from '@/hooks/useFollowCandidates';
 import { getCaretCoordinates } from '@/lib/caretCoords';
 
 /**
@@ -34,8 +35,14 @@ interface MentionCandidate {
   picture?: string;
   /** NIP-05 identifier from search results or author metadata. */
   nip05?: string;
+  /** kind-0 `name` (kept separate from displayName for search). */
+  name?: string;
   /** True when the candidate came from relay search rather than nostr.json. */
   external?: boolean;
+  /** True when the candidate is someone the current user follows (kind-3). */
+  followed?: boolean;
+  /** True for directly resolved lookups (NIP-05 / bech32) — pinned ahead of the cap. */
+  direct?: boolean;
 }
 
 /**
@@ -113,7 +120,12 @@ const CandidateRow = React.memo(function CandidateRow({
       <div className="flex flex-col min-w-0 flex-1">
         <span className="text-sm truncate flex items-center gap-1">
           {displayName}
-          {candidate.external && (
+          {candidate.followed && (
+            <span className="text-[9px] uppercase tracking-wide text-muted-foreground border rounded px-0.5">
+              following
+            </span>
+          )}
+          {!candidate.followed && candidate.external && (
             <span className="text-[9px] uppercase tracking-wide text-muted-foreground border rounded px-0.5">
               ext
             </span>
@@ -187,19 +199,50 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   /** External candidates from relay search, mapped to MentionCandidate shape. */
   const externalCandidates = useMemo<MentionCandidate[]>(() => {
     if (!searchResults) return [];
-    const seen = new Set(candidates.map((c) => c.pubkey));
+    // Deduped downstream in `filtered` against displayed candidates —
+    // filtering here against the full local pool can hide a recently
+    // selected fuzzy hit whose name doesn't contain the query.
     const external = searchResults
+      .map((r) => ({
+        pubkey: r.pubkey,
+        npub: r.npub,
+        displayName: r.displayName || r.name,
+        name: r.name,
+        picture: r.picture,
+        nip05: r.nip05,
+        direct: r.direct,
+        external: true,
+      }));
+    return external;
+  }, [searchResults]);
+
+  const { data: followedProfiles } = useFollowedProfiles();
+
+  /** Followed candidates matching the query — ranked before externals. */
+  const followCandidates = useMemo<MentionCandidate[]>(() => {
+    if (!followedProfiles) return [];
+    const q = deferredQuery.trim().toLowerCase();
+    const seen = new Set(candidates.map((c) => c.pubkey));
+    return followedProfiles
       .filter((r) => !seen.has(r.pubkey))
       .map((r) => ({
         pubkey: r.pubkey,
         npub: r.npub,
         displayName: r.displayName || r.name,
+        name: r.name,
         picture: r.picture,
         nip05: r.nip05,
-        external: true,
-      }));
-    return external;
-  }, [searchResults, candidates]);
+        followed: true,
+      }))
+      .filter((c) => {
+        if (!q) return true;
+        const disp = (c.displayName || '').toLowerCase();
+        const name = (c.name || '').toLowerCase();
+        const nip05 = (c.nip05 || '').toLowerCase();
+        return disp.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+      })
+      .slice(0, 10);
+  }, [followedProfiles, candidates, deferredQuery]);
 
   /** Filtered, memoized list — local pool first, then external search results. */
   const filtered = useMemo<MentionCandidate[]>(() => {
@@ -215,10 +258,21 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     if (!q) return candidates.slice(0, 20);
 
     const local = candidates.filter(match);
-    const external = externalCandidates.filter(match);
-    // Local (whitelisted) results first, then external.
-    return [...local, ...external];
-  }, [candidates, externalCandidates, deferredQuery, mention.active]);
+    // External results are already relay-scored; re-filtering them by a
+    // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
+    // words, so a prefix query like "gzu" may only surface near-matches).
+    const seen = new Set(
+      [...local, ...followCandidates].map((c) => c.pubkey),
+    );
+    const ext = externalCandidates.filter((c) => !seen.has(c.pubkey));
+    // Directly resolved lookups (NIP-05 / bech32) pin ahead of the cap —
+    // the user typed the full identity deliberately.
+    const direct = ext.filter((c) => c.direct);
+    const external = [...direct, ...ext.filter((c) => !c.direct)].slice(0, 15);
+    // Local (whitelisted) first, then people the viewer follows (the
+    // trust signal against similar-name impersonators), then externals.
+    return [...local, ...followCandidates, ...external];
+  }, [candidates, followCandidates, externalCandidates, deferredQuery, mention.active]);
 
   // Keep highlighted index in range as the filtered list changes.
   useEffect(() => {
@@ -424,7 +478,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                 {isSearching
                   ? 'Searching relays…'
                   : deferredQuery.trim()
-                    ? 'No matching users'
+                    ? 'No matching users — try a full address (name@domain.com)'
                     : 'Type a name to search…'}
               </div>
             ) : (
