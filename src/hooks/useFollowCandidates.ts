@@ -105,11 +105,11 @@ export function useFollowedProfiles() {
       for (let i = 0; i < followPubkeys.length; i += PROFILE_CHUNK) {
         chunks.push(followPubkeys.slice(i, i + PROFILE_CHUNK));
       }
-      // Guaranteed slots per relay class so neither displaces the other:
-      // the proven contact relay first, up to 2 configured read relays
-      // (followed profiles can exist only there), and social indexes
-      // filling the rest — write-only relays never enter this list
-      // unless they served the contact list.
+      // Two bounded query groups in parallel — no shared slot cap:
+      // personal relays (the proven contact relay + configured reads,
+      // which may hold followed profiles no index has) and all four
+      // social profile indexes. Write-only relays never enter unless
+      // they served the kind-3.
       const nip65Read = getNip65ReadRelays(config.relayMetadata);
       const batchRelays = Array.from(
         new Set(
@@ -117,7 +117,7 @@ export function useFollowedProfiles() {
             (r): r is string => !!r,
           ),
         ),
-      ).slice(0, 5);
+      );
       const profiles: NostrEvent[] = [];
       // One query() per relay with all chunk filters in a single REQ —
       // nostr.relay() opens a fresh websocket per call, and relays
