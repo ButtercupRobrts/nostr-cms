@@ -160,7 +160,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
   /** Highlighted index for keyboard nav within the filtered list. */
   const [activeIdx, setActiveIdx] = useState(0);
 
-  const { data: usersData } = useNostrJsonUsers();
+  const { data: usersData, isFetching: usersLoading } = useNostrJsonUsers();
 
   /** Stable candidate pool: nostr.json users + recently-mentioned, deduped. */
   const candidates = useMemo<MentionCandidate[]>(() => {
@@ -216,7 +216,29 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
     return external;
   }, [searchResults]);
 
-  const { data: followedProfiles } = useFollowedProfiles();
+  const { data: followedProfiles, isFetching: followsLoading } = useFollowedProfiles();
+
+  // True while typed text hasn't reached the search yet — either still in
+  // the 250ms debounce window or a fetch is in flight. Gates "No matching
+  // users" so it can't flash between keystrokes/requests.
+  const searchPending = isSearching || deferredQuery.trim() !== debouncedSearch;
+
+  // The whitelist (nostr.json) and followed-profile pools load async on
+  // their own — "No matching users" can't be trusted until they've settled
+  // too, or a late-arriving local match pops in right after the verdict.
+  const poolsPending = usersLoading || followsLoading;
+
+  // Grace period before showing "No matching users": an intermediate prefix
+  // ('gzu') can settle with zero results while the user is still typing
+  // toward 'gzuus' — show the verdict only once the query has been stable
+  // and fully searched for a beat.
+  const [showNoMatch, setShowNoMatch] = useState(false);
+  useEffect(() => {
+    setShowNoMatch(false);
+    if (searchPending || poolsPending || !deferredQuery.trim()) return;
+    const id = setTimeout(() => setShowNoMatch(true), 400);
+    return () => clearTimeout(id);
+  }, [searchPending, poolsPending, deferredQuery]);
 
   /** Followed candidates matching the query — ranked before externals. */
   const followCandidates = useMemo<MentionCandidate[]>(() => {
@@ -239,7 +261,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
         const disp = (c.displayName || '').toLowerCase();
         const name = (c.name || '').toLowerCase();
         const nip05 = (c.nip05 || '').toLowerCase();
-        return disp.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+        return disp.includes(q) || name.includes(q) || nip05.includes(q);
       })
       .slice(0, 10);
   }, [followedProfiles, candidates, deferredQuery]);
@@ -252,21 +274,21 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
       const handle = (c.handle || '').toLowerCase();
       const name = (c.displayName || '').toLowerCase();
       const nip05 = (c.nip05 || '').toLowerCase();
-      return handle.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+      return handle.includes(q) || name.includes(q) || (c.name || '').toLowerCase().includes(q) || nip05.includes(q);
     };
 
     if (!q) return candidates.slice(0, 20);
 
     const local = candidates.filter(match);
-    // External results are already relay-scored; re-filtering them by a
-    // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
-    // words, so a prefix query like "gzu" may only surface near-matches).
+    // Externals must pass the same substring match as locals — unfiltered
+    // fuzzy hits read as noise while the real results load. Direct NIP-05 /
+    // bech32 lookups are exempt: the user typed the full identity deliberately.
     const seen = new Set(
       [...local, ...followCandidates].map((c) => c.pubkey),
     );
-    const ext = externalCandidates.filter((c) => !seen.has(c.pubkey));
-    // Directly resolved lookups (NIP-05 / bech32) pin ahead of the cap —
-    // the user typed the full identity deliberately.
+    const ext = externalCandidates.filter(
+      (c) => !seen.has(c.pubkey) && (c.direct || match(c)),
+    );
     const direct = ext.filter((c) => c.direct);
     const external = [...direct, ...ext.filter((c) => !c.direct)].slice(0, 15);
     // Local (whitelisted) first, then people the viewer follows (the
@@ -475,11 +497,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
           >
             {filtered.length === 0 ? (
               <div className="py-3 text-center text-sm text-muted-foreground">
-                {isSearching
-                  ? 'Searching relays…'
-                  : deferredQuery.trim()
+                {!deferredQuery.trim()
+                  ? 'Type a name to search…'
+                  : showNoMatch
                     ? 'No matching users — try a full address (name@domain.com)'
-                    : 'Type a name to search…'}
+                    : 'Searching relays…'}
               </div>
             ) : (
               filtered.map((c, i) => (
@@ -503,6 +525,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                   <CandidateRow candidate={c} />
                 </button>
               ))
+            )}
+            {searchPending && filtered.length > 0 && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Searching relays…
+              </div>
             )}
           </div>,
           document.body,
