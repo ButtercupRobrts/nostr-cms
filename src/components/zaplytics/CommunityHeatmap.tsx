@@ -134,9 +134,9 @@ export function CommunityHeatmap({ data, members, isLoading }: CommunityHeatmapP
   const monthLabels: { weekIndex: number; label: string; year: number }[] = [];
   let lastMonth = -1;
   weeks.forEach((week, i) => {
-    const month = week[0].getMonth();
+    const month = week[0].getUTCMonth();
     if (month !== lastMonth) {
-      monthLabels.push({ weekIndex: i, label: MONTH_NAMES[month], year: week[0].getFullYear() });
+      monthLabels.push({ weekIndex: i, label: MONTH_NAMES[month], year: week[0].getUTCFullYear() });
       lastMonth = month;
     }
   });
@@ -244,7 +244,7 @@ export function CommunityHeatmap({ data, members, isLoading }: CommunityHeatmapP
           <div className="mt-2 text-sm">
             <div className="flex items-center gap-2 mb-1">
               <span className="font-medium text-foreground">
-                {hoveredCell.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {hoveredCell.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
               </span>
               <span className="text-primary font-medium">{formatSats(hoveredCell.totalSats)} sats</span>
               <span className="text-muted-foreground">{hoveredCell.zapCount} zap{hoveredCell.zapCount !== 1 ? 's' : ''}</span>

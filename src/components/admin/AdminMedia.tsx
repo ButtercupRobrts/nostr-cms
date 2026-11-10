@@ -1401,6 +1401,51 @@ function UploadMediaSection() {
 const MEDIA_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|avif|mp4|webm|mov|qt|mp3|ogg|wav|pdf|heic|heif)$/i;
 const URL_REGEX = /https?:\/\/[^\s"'<>)\]]+/g;
 
+const mirrorAuthCache = new Map<string, { headers: Record<string, string>; exp: number }>();
+const mirrorAuthPending = new Map<string, Promise<Record<string, string>>>();
+
+// Owner NIP-98 auth for /mirror, signed once per (pubkey, endpoint) per hour.
+// Never sent to a non-site origin — any other service, even another port on
+// the same host, could replay the signature against our relay; the 'u' tag
+// also binds it to this endpoint.
+async function mirrorAuthHeaders(
+  signer: { signEvent: (e: { kind: number; created_at: number; tags: string[][]; content: string }) => Promise<unknown> } | undefined,
+  pubkey: string,
+  mirrorUrl: string,
+): Promise<Record<string, string>> {
+  try {
+    if (new URL(mirrorUrl, window.location.href).origin !== window.location.origin) return {};
+  } catch {
+    return {};
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const key = `${pubkey}|${mirrorUrl}`;
+  const cached = mirrorAuthCache.get(key);
+  if (cached && cached.exp - 60 > now) return cached.headers;
+  const pending = mirrorAuthPending.get(key);
+  if (pending) return pending;
+  if (!signer) return {};
+  const promise = (async () => {
+    try {
+      const authEvent = await signer.signEvent({
+        kind: 24242,
+        content: 'Mirror blob',
+        tags: [['t', 'mirror'], ['u', mirrorUrl], ['expiration', (now + 3600).toString()]],
+        created_at: now,
+      });
+      const headers = { Authorization: `Nostr ${btoa(JSON.stringify(authEvent))}` };
+      mirrorAuthCache.set(key, { headers, exp: now + 3600 });
+      return headers;
+    } catch {
+      return {};
+    } finally {
+      mirrorAuthPending.delete(key);
+    }
+  })();
+  mirrorAuthPending.set(key, promise);
+  return promise;
+}
+
 interface HarvestedUrl {
   url: string;
   sha256: string | null; // extracted from URL path if blossom-style
@@ -1707,7 +1752,7 @@ function HarvestMediaSection() {
               headers: {
                 'Content-Type': 'application/json',
                 'X-Original-Date': item.createdAt.toString(),
-                'X-Owner-Pubkey': item.pubkey,
+                'X-Owner-Pubkey': item.pubkey, ...(await mirrorAuthHeaders(user?.signer, user?.pubkey ?? '', `${targetBlossomUrl}/mirror`)),
               },
               body: JSON.stringify({ url: item.url }),
             });
@@ -1725,7 +1770,7 @@ function HarvestMediaSection() {
             headers: {
               'Content-Type': 'application/json',
               'X-Original-Date': item.createdAt.toString(),
-              'X-Owner-Pubkey': item.pubkey,
+              'X-Owner-Pubkey': item.pubkey, ...(await mirrorAuthHeaders(user?.signer, user?.pubkey ?? '', `${targetBlossomUrl}/mirror`)),
             },
             body: JSON.stringify({ url: item.url }),
           });
@@ -1959,7 +2004,7 @@ function HarvestMediaSection() {
                 headers: {
                   'Content-Type': 'application/json',
                   'X-Original-Date': item.createdAt.toString(),
-                  'X-Owner-Pubkey': user!.pubkey,
+                  'X-Owner-Pubkey': user!.pubkey, ...(await mirrorAuthHeaders(user?.signer, user?.pubkey ?? '', `${targetBlossom}/mirror`)),
                 },
                 body: JSON.stringify({ url: item.url }),
               });
@@ -1982,7 +2027,7 @@ function HarvestMediaSection() {
             headers: {
               'Content-Type': 'application/json',
               'X-Original-Date': item.createdAt.toString(),
-              'X-Owner-Pubkey': user.pubkey,
+              'X-Owner-Pubkey': user.pubkey, ...(await mirrorAuthHeaders(user.signer, user.pubkey, `${targetBlossom}/mirror`)),
             },
             body: JSON.stringify({ url: item.url }),
           });
@@ -2020,7 +2065,7 @@ function HarvestMediaSection() {
             headers: {
               'Content-Type': 'application/json',
               'X-Original-Date': item.createdAt.toString(),
-              'X-Owner-Pubkey': user.pubkey,
+              'X-Owner-Pubkey': user.pubkey, ...(await mirrorAuthHeaders(user.signer, user.pubkey, `${targetBlossom}/mirror`)),
             },
             body: JSON.stringify({ url: item.url }),
           });
