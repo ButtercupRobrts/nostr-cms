@@ -65,6 +65,9 @@ export interface ZapperStats {
   name?: string;
   nip05?: string;
   picture?: string;
+  /** True for the aggregate unknown-sender bucket — never a real identity;
+   *  must not join cross-member graphs or carry profile metadata. */
+  anonymous?: boolean;
   totalSats: number;
   zapCount: number;
 }

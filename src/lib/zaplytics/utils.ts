@@ -417,8 +417,13 @@ export function getTopZappers(zaps: ParsedZap[]): ZapperStats[] {
       grouped.set(key, {
         pubkey: key,
         name: zap.zapper.anonymous ? 'Anonymous' : zap.zapper.name,
-        nip05: zap.zapper.nip05,
-        picture: zap.zapper.picture,
+        // Anonymous bucket gets only aggregate counts + a neutral label —
+        // propagating the LNURL server's nip05/picture would dress a
+        // service's profile up as the unknown sender.
+        ...(zap.zapper.anonymous ? { anonymous: true } : {
+          nip05: zap.zapper.nip05,
+          picture: zap.zapper.picture,
+        }),
         totalSats: zap.amount,
         zapCount: 1,
       });
@@ -593,8 +598,11 @@ export function analyzeZapperLoyalty(zaps: ParsedZap[]): import('@/types/zaplyti
     zapCount: number;
   }>();
 
-  // Group zaps by zapper
+  // Group zaps by zapper — skip unknown senders: loyalty is unknowable for
+  // receipts without a zap request, and folding them into one entity would
+  // fabricate a whale/regular "supporter" that doesn't exist.
   zaps.forEach(zap => {
+    if (zap.zapper.anonymous) return;
     const existing = zapperData.get(zap.zapper.pubkey);
     if (existing) {
       existing.zaps.push(zap);
