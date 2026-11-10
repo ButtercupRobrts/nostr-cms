@@ -239,7 +239,7 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
         const disp = (c.displayName || '').toLowerCase();
         const name = (c.name || '').toLowerCase();
         const nip05 = (c.nip05 || '').toLowerCase();
-        return disp.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+        return disp.includes(q) || name.includes(q) || nip05.includes(q);
       })
       .slice(0, 10);
   }, [followedProfiles, candidates, deferredQuery]);
@@ -252,21 +252,21 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
       const handle = (c.handle || '').toLowerCase();
       const name = (c.displayName || '').toLowerCase();
       const nip05 = (c.nip05 || '').toLowerCase();
-      return handle.includes(q) || name.includes(q) || nip05.includes(q) || c.npub.toLowerCase().includes(q);
+      return handle.includes(q) || name.includes(q) || nip05.includes(q);
     };
 
     if (!q) return candidates.slice(0, 20);
 
     const local = candidates.filter(match);
-    // External results are already relay-scored; re-filtering them by a
-    // literal substring match drops valid fuzzy hits (NIP-50 indexes whole
-    // words, so a prefix query like "gzu" may only surface near-matches).
+    // Externals must pass the same substring match as locals — unfiltered
+    // fuzzy hits read as noise while the real results load. Direct NIP-05 /
+    // bech32 lookups are exempt: the user typed the full identity deliberately.
     const seen = new Set(
       [...local, ...followCandidates].map((c) => c.pubkey),
     );
-    const ext = externalCandidates.filter((c) => !seen.has(c.pubkey));
-    // Directly resolved lookups (NIP-05 / bech32) pin ahead of the cap —
-    // the user typed the full identity deliberately.
+    const ext = externalCandidates.filter(
+      (c) => !seen.has(c.pubkey) && (c.direct || match(c)),
+    );
     const direct = ext.filter((c) => c.direct);
     const external = [...direct, ...ext.filter((c) => !c.direct)].slice(0, 15);
     // Local (whitelisted) first, then people the viewer follows (the
@@ -503,6 +503,11 @@ export const MentionTextarea = React.forwardRef<HTMLTextAreaElement, MentionText
                   <CandidateRow candidate={c} />
                 </button>
               ))
+            )}
+            {isSearching && filtered.length > 0 && (
+              <div className="py-2 text-center text-xs text-muted-foreground">
+                Searching relays…
+              </div>
             )}
           </div>,
           document.body,
